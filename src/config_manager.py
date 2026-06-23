@@ -72,17 +72,14 @@ class DatabaseConfig:
 
 
 _DEFAULT_CHECKPOINTS: Dict[str, dict] = {
-    "CL-01": {"name": "Trunnion Bracket – Long Member",          "x": 0.30, "y": 0.55, "w": 0.10, "h": 0.16},
-    "CL-02": {"name": "V-Rod Corner Bracket – Frame",            "x": 0.72, "y": 0.42, "w": 0.09, "h": 0.10},
-    "CL-03": {"name": "Articulation Stopper – Frame",            "x": 0.78, "y": 0.58, "w": 0.07, "h": 0.09},
-    "CL-04": {"name": "Trunnion Bracket – Cross Member",         "x": 0.38, "y": 0.50, "w": 0.09, "h": 0.12},
-    "CL-05": {"name": "Anti-Roll Bar Sub-Assembly",              "x": 0.62, "y": 0.62, "w": 0.14, "h": 0.10},
-    "CL-06": {"name": "V-Rod Mounting – Corner Bracket",         "x": 0.72, "y": 0.50, "w": 0.08, "h": 0.09},
-    "CL-07": {"name": "Parking Relay Valve – Fitment",           "x": 0.50, "y": 0.58, "w": 0.07, "h": 0.08},
-    "CL-08": {"name": "Parking Relay Valve – Pipe Connection",   "x": 0.50, "y": 0.62, "w": 0.06, "h": 0.07},
-    "CL-09": {"name": "PTC Connector – Rear Brake Pipe",         "x": 0.85, "y": 0.38, "w": 0.06, "h": 0.07},
-    "CL-10": {"name": "Resilience Brackets – Frame (×5)",        "x": 0.25, "y": 0.45, "w": 0.18, "h": 0.08},
-    "CL-11": {"name": "Front Shock Absorber Brackets (×4)",      "x": 0.12, "y": 0.52, "w": 0.16, "h": 0.08},
+    "CL-01": {"name": "Resilience bkt.",               "x": 0.4451, "y": 0.2408, "w": 0.06, "h": 0.06},
+    "CL-04": {"name": "B/S Bumper support bkt.",       "x": 0.1321, "y": 0.2428, "w": 0.06, "h": 0.06},
+    "CL-05": {"name": "Bumper support bkt",            "x": 0.1122, "y": 0.8487, "w": 0.06, "h": 0.06},
+    "CL-08": {"name": "B/S Trunnion bkt mtg on frame", "x": 0.7770, "y": 0.8049, "w": 0.06, "h": 0.08},
+    "CL-12": {"name": "B/S Eng Mtg Bkt",               "x": 0.3148, "y": 0.8390, "w": 0.06, "h": 0.06},
+    "CL-15": {"name": "APU Fitment with bkt",          "x": 0.5198, "y": 0.8364, "w": 0.06, "h": 0.06},
+    "CL-18": {"name": "B/S ARB Rear mtg BKT",          "x": 0.9390, "y": 0.8099, "w": 0.06, "h": 0.08},
+    "CL-19": {"name": "Articulation Stopper",          "x": 0.8109, "y": 0.2598, "w": 0.06, "h": 0.06},
 }
 
 
@@ -106,7 +103,7 @@ class AppConfig:
     conveyor_direction: str = "left_to_right"
     line_id: str = "LINE-03"
     station_id: str = "01_VIN_Scan"
-    reference_image: str = "slide_10.png"
+    reference_image: str = "new_qa.png"
     checkpoints: Dict[str, dict] = field(default_factory=lambda: dict(_DEFAULT_CHECKPOINTS))
 
 

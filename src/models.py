@@ -33,26 +33,15 @@ class VehicleModel:
     checklist: List[ChecklistItem] = field(default_factory=list)
 
 
-# ── Master checklist from Prefitment Top View (Prefitment Top View.pptx) ──
+# ── Master checklist from qg-1.pptx / new_qa.png (final 8-point inspection) ──
 
 _PREFITMENT_CHECKLIST = [
-    ChecklistItem("CL-01", "Resilense bkt (5)", "", 1, ""),
-    ChecklistItem("CL-02", "Battery Carrier", "", 1, ""),
-    ChecklistItem("CL-03", "Air Tank", "", 1, ""),
-    ChecklistItem("CL-04", "B/S Bumper support bkt", "", 1, ""),
+    ChecklistItem("CL-01", "Resilience bkt.", "", 1, ""),
+    ChecklistItem("CL-04", "B/S Bumper support bkt.", "", 1, ""),
     ChecklistItem("CL-05", "Bumper support bkt", "", 1, ""),
-    ChecklistItem("CL-06", "Relay Valve", "", 1, ""),
-    ChecklistItem("CL-07", "Link Rod", "", 1, ""),
     ChecklistItem("CL-08", "B/S Trunnion bkt mtg on frame", "", 1, ""),
-    ChecklistItem("CL-09", "PTC", "", 1, ""),
-    ChecklistItem("CL-10", "Relay Valve", "", 1, ""),
-    ChecklistItem("CL-11", "Lift Axle KIT", "", 1, ""),
     ChecklistItem("CL-12", "B/S Eng Mtg Bkt", "", 1, ""),
-    ChecklistItem("CL-13", "Bump Stopper", "", 1, ""),
-    ChecklistItem("CL-14", "Spring Hanger Bkt", "", 1, ""),
     ChecklistItem("CL-15", "APU Fitment with bkt", "", 1, ""),
-    ChecklistItem("CL-16", "Relay Valve", "", 1, ""),
-    ChecklistItem("CL-17", "Spring Hanger Bkt", "", 1, ""),
     ChecklistItem("CL-18", "B/S ARB Rear mtg BKT", "", 1, ""),
     ChecklistItem("CL-19", "Articulation Stopper", "", 1, ""),
 ]
@@ -64,31 +53,31 @@ VEHICLE_MODELS: Dict[str, VehicleModel] = {
     "4832TK": VehicleModel(
         code="4832TK",
         name="Tata 4832 TK – Long Member Frame",
-        description="Heavy duty long member chassis frame — full 19-point checklist",
+        description="Heavy duty long member chassis frame — 8-point checklist",
         checklist=_PREFITMENT_CHECKLIST,
     ),
     "2518": VehicleModel(
         code="2518",
         name="Tata 2518 – Medium Frame",
-        description="Medium duty chassis — 19-point checklist",
+        description="Medium duty chassis — 8-point checklist",
         checklist=_PREFITMENT_CHECKLIST,
     ),
     "3118": VehicleModel(
         code="3118",
         name="Tata 3118 – Heavy Frame",
-        description="Heavy duty chassis — 17-point checklist",
+        description="Heavy duty chassis — 8-point checklist",
         checklist=_PREFITMENT_CHECKLIST,
     ),
     "4923": VehicleModel(
         code="4923",
         name="Tata 4923 – Extra Heavy Frame",
-        description="Extra heavy chassis — 17-point checklist",
+        description="Extra heavy chassis — 8-point checklist",
         checklist=_PREFITMENT_CHECKLIST,
     ),
     "DEFAULT": VehicleModel(
         code="DEFAULT",
         name="Generic Frame",
-        description="Default checklist — all 19 checkpoints",
+        description="Default checklist — 8-point checklist",
         checklist=_PREFITMENT_CHECKLIST,
     ),
 }

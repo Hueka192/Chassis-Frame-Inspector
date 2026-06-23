@@ -25,119 +25,53 @@ camera2:
   width: 3072
 checkpoints:
   CL-01:
-    h: 0.1796
-    name: Resilense bkt (5)
-    w: 0.0593
-    x: 0.4039
-    y: 0.1838
-  CL-02:
-    h: 0.1796
-    name: Battery Carrier
-    w: 0.0593
-    x: 0.4039
-    y: 0.1838
-  CL-03:
-    h: 0.1796
-    name: Air Tank
-    w: 0.0593
-    x: 0.4039
-    y: 0.1838
+    h: 0.06
+    name: Resilience bkt.
+    w: 0.06
+    x: 0.4451
+    y: 0.2408
   CL-04:
-    h: 0.0925
-    name: B/S Bumper support bkt
-    w: 0.0305
-    x: 0.0207
-    y: 0.2737
+    h: 0.06
+    name: B/S Bumper support bkt.
+    w: 0.06
+    x: 0.1321
+    y: 0.2428
   CL-05:
-    h: 0.0925
+    h: 0.06
     name: Bumper support bkt
-    w: 0.0305
-    x: 0.0207
-    y: 0.2737
-  CL-06:
-    h: 0.033
-    name: Relay Valve
-    w: 0.0624
-    x: 0.2822
-    y: 0.3753
-  CL-07:
-    h: 0.033
-    name: Link Rod
-    w: 0.0624
-    x: 0.2822
-    y: 0.3753
+    w: 0.06
+    x: 0.1122
+    y: 0.8487
   CL-08:
-    h: 0.2032
+    h: 0.08
     name: B/S Trunnion bkt mtg on frame
-    w: 0.0472
-    x: 0.8238
-    y: 0.3754
-  CL-09:
-    h: 0.0788
-    name: PTC
-    w: 0.0266
-    x: 0.9045
-    y: 0.4096
-  CL-10:
-    h: 0.0652
-    name: Relay Valve
-    w: 0.0215
-    x: 0.7752
-    y: 0.4165
-  CL-11:
-    h: 0.9402
-    name: Lift Axle KIT
-    w: 0.1155
-    x: 0.5899
-    y: 0.5065
+    w: 0.06
+    x: 0.7770
+    y: 0.8049
   CL-12:
-    h: 0.0954
+    h: 0.06
     name: B/S Eng Mtg Bkt
-    w: 0.0263
-    x: 0.1927
-    y: 0.6691
-  CL-13:
-    h: 0.0685
-    name: Bump Stopper
-    w: 0.0263
-    x: 0.1399
-    y: 0.6754
-  CL-14:
-    h: 0.0954
-    name: Spring Hanger Bkt
-    w: 0.0263
-    x: 0.058
-    y: 0.6813
+    w: 0.06
+    x: 0.3148
+    y: 0.8390
   CL-15:
-    h: 0.1311
+    h: 0.06
     name: APU Fitment with bkt
-    w: 0.0395
-    x: 0.4047
-    y: 0.6826
-  CL-16:
-    h: 0.1311
-    name: Relay Valve
-    w: 0.0395
-    x: 0.4047
-    y: 0.6826
-  CL-17:
-    h: 0.1311
-    name: Spring Hanger Bkt
-    w: 0.0395
-    x: 0.4047
-    y: 0.6826
+    w: 0.06
+    x: 0.5198
+    y: 0.8364
   CL-18:
-    h: 0.0661
+    h: 0.08
     name: B/S ARB Rear mtg BKT
-    w: 0.0358
-    x: 0.9586
-    y: 0.6848
+    w: 0.06
+    x: 0.9390
+    y: 0.8099
   CL-19:
-    h: 0.1292
+    h: 0.06
     name: Articulation Stopper
-    w: 0.0352
-    x: 0.8869
-    y: 0.718
+    w: 0.06
+    x: 0.8109
+    y: 0.2598
 conveyor_direction: left_to_right
 database:
   database: kitting_zone_4
@@ -159,7 +93,7 @@ detection:
   roi_top_pct: 0.0
   use_gpu: false
 line_id: LINE-03
-reference_image: checkpoints_new.png
+reference_image: new_qa.png
 serial:
   baudrate: 9600
   bytesize: 8

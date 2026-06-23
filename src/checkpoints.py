@@ -1,5 +1,5 @@
 """
-Checkpoint definitions — matched 1:1 to PPTX slides.
+Checkpoint definitions — final 8-point inspection checklist from qg-1.pptx / new_qa.png.
 """
 from __future__ import annotations
 import copy
@@ -39,60 +39,45 @@ class Checkpoint:
 
 
 CHECKPOINTS: List[Checkpoint] = [
-    Checkpoint(1,  "CP-01", "Trunnion Bracket – Long Member",
-               "Trunnion bracket fitted with Long Member", 1,
-               "Centre / Rear axle zone", "CENTER", "any",
-               ["trunnion", "bracket", "long member"], "slide_01.png"),
+    Checkpoint(1,  "CL-01", "Resilience bkt.",
+               "Resilience bracket fitment", 1,
+               "Frame middle", "CENTER", "any",
+               ["resilience", "bkt"], "new_qa.png"),
 
-    Checkpoint(2,  "CP-02", "V-Rod Corner Bracket – Frame",
-               "V Rod corner bracket assembled with frame", 1,
-               "Rear section", "CENTER", "any",
-               ["v rod", "corner bracket", "frame"], "slide_01.png"),
+    Checkpoint(2,  "CL-04", "B/S Bumper support bkt.",
+               "Both sides bumper support bracket", 1,
+               "Front left", "BOTH", "any",
+               ["bumper", "support", "bkt"], "new_qa.png"),
 
-    Checkpoint(3,  "CP-03", "Articulation Stopper – Frame",
-               "Articulation stopper fitted with frame", 1,
+    Checkpoint(3,  "CL-05", "Bumper support bkt",
+               "Bumper support bracket", 1,
+               "Front", "CENTER", "any",
+               ["bumper", "support"], "new_qa.png"),
+
+    Checkpoint(4,  "CL-08", "B/S Trunnion bkt mtg on frame",
+               "Both sides trunnion bracket mounting on frame", 1,
+               "Rear axle", "BOTH", "any",
+               ["trunnion", "bkt", "mtg"], "new_qa.png"),
+
+    Checkpoint(5,  "CL-12", "B/S Eng Mtg Bkt",
+               "Both sides engine mounting bracket", 1,
+               "Engine area", "BOTH", "any",
+               ["engine", "mtg", "bkt"], "new_qa.png"),
+
+    Checkpoint(6,  "CL-15", "APU Fitment with bkt",
+               "APU fitment with bracket", 1,
+               "Underside", "CENTER", "any",
+               ["apu", "fitment", "bkt"], "new_qa.png"),
+
+    Checkpoint(7,  "CL-18", "B/S ARB Rear mtg BKT",
+               "Both sides anti-roll bar rear mounting bracket", 1,
+               "Rear", "BOTH", "any",
+               ["arb", "rear", "mtg"], "new_qa.png"),
+
+    Checkpoint(8,  "CL-19", "Articulation Stopper",
+               "Articulation stopper fitment", 1,
                "Rear axle zone", "CENTER", "any",
-               ["articulation", "stopper"], "slide_01.png"),
-
-    Checkpoint(4,  "CP-04", "Trunnion Bracket – Cross Member",
-               "Trunnion bracket fitted with Cross Member", 1,
-               "Centre cross member", "CENTER", "cam1",
-               ["trunnion", "cross member"], "slide_02.png"),
-
-    Checkpoint(5,  "CP-05", "Anti-Roll Bar Sub-Assembly",
-               "Anti roll bar sub assembled mounting with frame", 1,
-               "Rear", "CENTER", "cam2",
-               ["anti roll bar", "arb", "mounting"], "slide_03.png"),
-
-    Checkpoint(6,  "CP-06", "V-Rod Mounting – Corner Bracket",
-               "V rod mounting with corner bracket", 1,
-               "Rear axle", "CENTER", "any",
-               ["v rod", "mounting", "corner"], "slide_04.png"),
-
-    Checkpoint(7,  "CP-07", "Parking Relay Valve – Fitment",
-               "Parking Relay valve fitment on aligated X/M", 1,
-               "Cross member", "CENTER", "cam1",
-               ["parking relay valve", "relay valve", "fitment"], "slide_05.png"),
-
-    Checkpoint(8,  "CP-08", "Parking Relay Valve – Pipe Conn.",
-               "Parking Relay valve pipe connection on aligated X/M", 1,
-               "Cross member", "CENTER", "cam1",
-               ["parking relay", "pipe connection", "voss"], "slide_05.png"),
-
-    Checkpoint(9,  "CP-09", "PTC Connector – Rear Brake Pipe",
-               "PTC connector on Rear Brake pipe Voss connector", 1,
-               "Rear brake area", "CENTER", "cam2",
-               ["ptc connector", "brake pipe", "voss connector"], "slide_06.png"),
-
-    Checkpoint(10, "CP-10", "Resilience Brackets – Frame (×5)",
-               "5 resilience brackets on frame (2 RH + 3 LH)", 5,
-               "Both sides of Long Member", "BOTH", "any",
-               ["resilience bracket", "bracket"], "slide_07.png"),
-
-    Checkpoint(11, "CP-11", "Front Shock Absorber Brackets (×4)",
-               "Front Shock absorber bracket qty 04 on Frame", 4,
-               "Front zone – both sides", "BOTH", "any",
-               ["shock absorber bracket", "front shock", "bracket"], "slide_10.png"),
+               ["articulation", "stopper"], "new_qa.png"),
 ]
 
 CHECKPOINT_MAP = {cp.id: cp for cp in CHECKPOINTS}

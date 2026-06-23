@@ -190,6 +190,20 @@ class TitleBar(QWidget):
         t.start(1000)
         t.timeout.emit()
 
+        lay.addSpacing(max(8, int(14 * s)))
+
+        # DB connection status indicator
+        self._dbs = max(10, int(12 * s))
+        self._db_dot = QLabel("●")
+        self._db_dot.setFixedWidth(max(12, int(16 * s)))
+        self._db_dot.setStyleSheet(f"color:#ff5252; font-size:{self._dbs}px; background:transparent;")
+        self._db_dot.setToolTip("DB: Disconnected")
+        lay.addWidget(self._db_dot)
+
+        self._db_lbl = QLabel("DB")
+        self._db_lbl.setStyleSheet(f"color:#667799; font-size:{isz}px; font-family:Consolas; font-weight:bold; background:transparent;")
+        lay.addWidget(self._db_lbl)
+
         lay.addSpacing(max(12, int(20 * s)))
 
         sb = max(26, int(32 * s))
@@ -202,6 +216,32 @@ class TitleBar(QWidget):
         )
         self._settings_btn.clicked.connect(self._settings_clicked.emit)
         lay.addWidget(self._settings_btn)
+
+        # Periodic DB health check
+        self._db_timer = QTimer(self)
+        self._db_timer.timeout.connect(self._check_db)
+        self._db_timer.start(30000)
+        QTimer.singleShot(500, self._check_db)
+
+    def _check_db(self):
+        ok = False
+        try:
+            import psycopg2
+            cfg = ConfigManager.instance().cfg.database
+            conn = psycopg2.connect(
+                host=cfg.host, port=cfg.port, dbname=cfg.database,
+                user=cfg.user, password=cfg.password, connect_timeout=3,
+            )
+            conn.close()
+            ok = True
+        except Exception:
+            ok = False
+        self._db_dot.setStyleSheet(
+            f"color:#00e676; font-size:{self._dbs}px; background:transparent;"
+            if ok else
+            f"color:#ff5252; font-size:{self._dbs}px; background:transparent;"
+        )
+        self._db_dot.setToolTip("DB: Connected" if ok else "DB: Disconnected")
 
 
 class ChassisPhotoWidget(QWidget):
