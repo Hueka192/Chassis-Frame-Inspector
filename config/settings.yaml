@@ -1,0 +1,126 @@
+alert:
+  auto_save_ng_frames: true
+  log_missing_frames: true
+  missing_part_sound: true
+  ng_save_dir: logs/ng_frames
+camera1:
+  buffer_size: 1
+  digital_zoom: 1.0
+  enabled: true
+  fps: 15
+  height: 2048
+  label: Left View
+  reconnect_delay: 3
+  rtsp_url: rtsp://admin:admin123@192.168.1.64/Streaming/Channels/101
+  width: 3072
+camera2:
+  buffer_size: 1
+  digital_zoom: 1.0
+  enabled: true
+  fps: 15
+  height: 2048
+  label: Right View
+  reconnect_delay: 3
+  rtsp_url: rtsp://admin:admin123@192.168.1.65/Streaming/Channels/101
+  width: 3072
+checkpoints:
+  CL-01:
+    name: Trunnion Bracket – Long Member
+    x: 0.3
+    y: 0.55
+    w: 0.10
+    h: 0.16
+  CL-02:
+    name: V-Rod Corner Bracket – Frame
+    x: 0.72
+    y: 0.42
+    w: 0.09
+    h: 0.10
+  CL-03:
+    name: Articulation Stopper – Frame
+    x: 0.78
+    y: 0.58
+    w: 0.07
+    h: 0.09
+  CL-04:
+    name: Trunnion Bracket – Cross Member
+    x: 0.38
+    y: 0.5
+    w: 0.09
+    h: 0.12
+  CL-05:
+    name: Anti-Roll Bar Sub-Assembly
+    x: 0.62
+    y: 0.62
+    w: 0.14
+    h: 0.10
+  CL-06:
+    name: V-Rod Mounting – Corner Bracket
+    x: 0.72
+    y: 0.5
+    w: 0.08
+    h: 0.09
+  CL-07:
+    name: Parking Relay Valve – Fitment
+    x: 0.5
+    y: 0.58
+    w: 0.07
+    h: 0.08
+  CL-08:
+    name: Parking Relay Valve – Pipe Connection
+    x: 0.5
+    y: 0.62
+    w: 0.06
+    h: 0.07
+  CL-09:
+    name: PTC Connector – Rear Brake Pipe
+    x: 0.85
+    y: 0.38
+    w: 0.06
+    h: 0.07
+  CL-10:
+    name: Resilience Brackets – Frame (×5)
+    x: 0.25
+    y: 0.45
+    w: 0.18
+    h: 0.08
+  CL-11:
+    name: Front Shock Absorber Brackets (×4)
+    x: 0.12
+    y: 0.52
+    w: 0.16
+    h: 0.08
+serial:
+  enabled: true
+  port: COM4
+  baudrate: 9600
+  bytesize: 8
+  parity: N
+  stopbits: 1
+  flow_control: none
+
+database:
+  host: 192.168.11.199
+  port: 5432
+  database: kitting_zone_4
+  user: postgres
+  password: postgres
+  table: kitting_zone_4
+  vin_column: VIN_no
+  vc_column: VC_no
+
+conveyor_direction: left_to_right
+detection:
+  confidence_threshold: 0.45
+  frame_skip: 3
+  model_path: assets/best.pt
+  nms_threshold: 0.4
+  roi_bottom_pct: 1.0
+  roi_left_pct: 0.0
+  roi_right_pct: 1.0
+  roi_top_pct: 0.0
+  use_gpu: false
+line_id: LINE-03
+reference_image: slide_10.png
+station_id: 01_VIN_Scan
+theme: dark

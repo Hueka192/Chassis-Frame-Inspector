@@ -1,0 +1,9 @@
+PyQt5>=5.15.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+PyYAML>=6.0
+Pillow>=10.0.0
+python-pptx>=0.6.21
+pyserial>=3.5
+psycopg2-binary>=2.9.0
+# ultralytics>=8.0.0   # optional YOLO
