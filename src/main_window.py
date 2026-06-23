@@ -572,8 +572,8 @@ class MainWindow(QMainWindow):
         screen = QApplication.primaryScreen()
         scr_w = screen.availableGeometry().width() if screen else 1920
         sw = self.width() or scr_w
-        cam_w = max(240, int(sw * 0.45))
-        ref_w = max(240, int(sw * 0.55))
+        cam_w = max(240, int(sw * 0.30))
+        ref_w = max(240, int(sw * 0.70))
         self._h_split.setSizes([cam_w, ref_w])
 
         self._toast_popup = ToastPopup(self)
