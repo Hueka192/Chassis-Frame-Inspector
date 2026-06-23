@@ -1016,12 +1016,6 @@ class MainWindow(QMainWindow):
         self._show_toast(f"Viewing: {lbl}", 1500)
 
     def _start_cameras(self):
-        workers = list(self._cam_workers.values())
-        for w in workers:
-            w.stop()
-        for w in workers:
-            w.wait(1000)
-        self._cam_workers.clear()
         for cam_id in (1, 2):
             self._launch_camera(cam_id)
         cfg2 = self._cfg.camera2
@@ -1030,6 +1024,10 @@ class MainWindow(QMainWindow):
             self._btn_right.setText("RIGHT VIEW (OFF)")
 
     def _launch_camera(self, cam_id: int):
+        existing = self._cam_workers.get(cam_id)
+        if existing:
+            existing.stop()
+
         cfg = self._cfg.camera1 if cam_id == 1 else self._cfg.camera2
         if cam_id == 2 and not cfg.enabled:
             return

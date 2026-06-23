@@ -40,6 +40,7 @@ class CameraWorker(QThread):
     def stop(self):
         with QMutexLocker(self._mutex):
             self._stop = True
+        self.wait(5000)
 
     def pause(self):
         with QMutexLocker(self._mutex):
@@ -188,6 +189,7 @@ class DemoFrameWorker(QThread):
 
     def stop(self):
         self._stop = True
+        self.wait(3000)
 
     def pause(self): pass
     def resume(self): pass

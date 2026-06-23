@@ -7,4 +7,6 @@ build/
 .env
 logs/*.db
 logs/*.log
+logs/*.db-shm
+logs/*.db-wal
 config/settings_local.yaml
