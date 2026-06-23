@@ -224,11 +224,11 @@ class DemoFrameWorker(QThread):
 
         # Brackets (coloured blobs)
         parts = [
-            ((bx + 80,  by + 60), (60, 40), (0, 180, 255), "Trunnion Brkt"),
-            ((bx + 250, by + 10), (50, 30), (255, 140, 0), "V-Rod Corner"),
-            ((bx + 400, by + 55), (55, 45), (180, 0, 255), "Anti-Roll Bar"),
-            ((bx + 600, by + 30), (45, 35), (0, 220, 180), "PTC Connector"),
-            ((bx + 750, by + 60), (40, 30), (220, 220, 0), "Shock Abs Brkt"),
+            ((bx + 30,  by + 60), (60, 40), (0, 180, 255), "B/S Bumper"),
+            ((bx + 200, by + 10), (50, 30), (255, 140, 0), "Resilience"),
+            ((bx + 350, by + 55), (55, 45), (180, 0, 255), "Articulation"),
+            ((bx + 500, by + 30), (45, 35), (0, 220, 180), "B/S Trunnion"),
+            ((bx + 700, by + 60), (40, 30), (220, 220, 0), "B/S ARB"),
         ]
         for (px, py), (pw, ph), color, lbl in parts:
             if 0 < px < W and 0 < py < H:
