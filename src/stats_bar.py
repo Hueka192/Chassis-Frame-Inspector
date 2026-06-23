@@ -41,6 +41,7 @@ class VerdictBadge(QLabel):
     STYLES = {
         "OK":          ("OK",                "#00e676", "#0d2a1a"),
         "NG":          ("NG",                "#ff5252", "#2a0d0d"),
+        "NA":          ("NA",                "#ffb300", "#1a1400"),
         "IN_PROGRESS": ("IN PROGRESS",       "#ffd740", "#1a1600"),
         "WAITING":     ("WAITING",           "#00bcd4", "#001a20"),
         "SCAN_VC":     ("SCAN VC",           "#aa88ff", "#12001a"),
@@ -156,7 +157,10 @@ class StatsBar(QWidget):
         self.tile_ng  = KPITile("NG",  "0", "#ff5252", big=True)
         self.tile_ng.setFixedWidth(86)
 
-        for w in [self.verdict, self.tile_veh, self.tile_ok, self.tile_ng]:
+        self.tile_na  = KPITile("NA",  "0", "#ffb300", big=True)
+        self.tile_na.setFixedWidth(86)
+
+        for w in [self.verdict, self.tile_veh, self.tile_ok, self.tile_ng, self.tile_na]:
             lay.addWidget(w)
 
         lay.addStretch()
@@ -178,8 +182,10 @@ class StatsBar(QWidget):
         self.tile_veh.set_value(str(stats.get("total", 0)), "#aa88ff")
         ok = stats.get("ok", 0)
         ng = stats.get("ng", 0)
+        na = stats.get("na", 0)
         self.tile_ok.set_value(str(ok), "#00e676")
         self.tile_ng.set_value(str(ng), "#ff5252" if ng > 0 else "#445566")
+        self.tile_na.set_value(str(na), "#ffb300" if na > 0 else "#445566")
 
     @pyqtSlot(str)
     def on_verdict(self, verdict: str):

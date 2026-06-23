@@ -33,51 +33,28 @@ class VehicleModel:
     checklist: List[ChecklistItem] = field(default_factory=list)
 
 
-# ── Master checklist (shared base — same PPTX checkpoints) ────────────────────
+# ── Master checklist from Prefitment Top View (Prefitment Top View.pptx) ──
 
-_BASE_CHECKLIST = [
-    ChecklistItem("CL-01", "Trunnion Bracket – Long Member",
-                  "Trunnion bracket fitted with Long Member", 1, "Centre/Rear axle zone"),
-    ChecklistItem("CL-02", "V-Rod Corner Bracket – Frame",
-                  "V Rod corner bracket assembled with frame", 1, "Rear section"),
-    ChecklistItem("CL-03", "Articulation Stopper – Frame",
-                  "Articulation stopper fitted with frame", 1, "Rear axle zone"),
-    ChecklistItem("CL-04", "Trunnion Bracket – Cross Member",
-                  "Trunnion bracket fitted with Cross Member", 1, "Centre cross member"),
-    ChecklistItem("CL-05", "Anti-Roll Bar Sub-Assembly",
-                  "Anti roll bar sub assembled mounting with frame", 1, "Rear"),
-    ChecklistItem("CL-06", "V-Rod Mounting – Corner Bracket",
-                  "V rod mounting with corner bracket", 1, "Rear axle"),
-    ChecklistItem("CL-07", "Parking Relay Valve – Fitment",
-                  "Parking Relay valve fitment on aligated X/M", 1, "Cross member"),
-    ChecklistItem("CL-08", "Parking Relay Valve – Pipe Connection",
-                  "Parking Relay valve pipe connection on aligated X/M", 1, "Cross member"),
-    ChecklistItem("CL-09", "PTC Connector – Rear Brake Pipe",
-                  "PTC connector on Rear Brake pipe Voss connector", 1, "Rear brake area"),
-    ChecklistItem("CL-10", "Resilience Brackets – Frame (×5)",
-                  "5 resilience brackets on frame (2 RH + 3 LH)", 5, "Both sides of LM"),
-    ChecklistItem("CL-11", "Front Shock Absorber Brackets (×4)",
-                  "Front Shock absorber bracket qty 04 on Frame", 4, "Front zone"),
-]
-
-# Subset for shorter models (e.g. 2518 without rear ARB items)
-_SHORT_CHECKLIST = [
-    ChecklistItem("CL-01", "Trunnion Bracket – Long Member",
-                  "Trunnion bracket fitted with Long Member", 1, "Centre/Rear axle zone"),
-    ChecklistItem("CL-02", "V-Rod Corner Bracket – Frame",
-                  "V Rod corner bracket assembled with frame", 1, "Rear section"),
-    ChecklistItem("CL-03", "Articulation Stopper – Frame",
-                  "Articulation stopper fitted with frame", 1, "Rear axle zone"),
-    ChecklistItem("CL-04", "Trunnion Bracket – Cross Member",
-                  "Trunnion bracket fitted with Cross Member", 1, "Centre cross member"),
-    ChecklistItem("CL-06", "V-Rod Mounting – Corner Bracket",
-                  "V rod mounting with corner bracket", 1, "Rear axle"),
-    ChecklistItem("CL-07", "Parking Relay Valve – Fitment",
-                  "Parking Relay valve fitment on aligated X/M", 1, "Cross member"),
-    ChecklistItem("CL-09", "PTC Connector – Rear Brake Pipe",
-                  "PTC connector on Rear Brake pipe Voss connector", 1, "Rear brake area"),
-    ChecklistItem("CL-10", "Resilience Brackets – Frame (×5)",
-                  "5 resilience brackets on frame (2 RH + 3 LH)", 5, "Both sides of LM"),
+_PREFITMENT_CHECKLIST = [
+    ChecklistItem("CL-01", "Resilense bkt (5)", "", 1, ""),
+    ChecklistItem("CL-02", "Battery Carrier", "", 1, ""),
+    ChecklistItem("CL-03", "Air Tank", "", 1, ""),
+    ChecklistItem("CL-04", "B/S Bumper support bkt", "", 1, ""),
+    ChecklistItem("CL-05", "Bumper support bkt", "", 1, ""),
+    ChecklistItem("CL-06", "Relay Valve", "", 1, ""),
+    ChecklistItem("CL-07", "Link Rod", "", 1, ""),
+    ChecklistItem("CL-08", "B/S Trunnion bkt mtg on frame", "", 1, ""),
+    ChecklistItem("CL-09", "PTC", "", 1, ""),
+    ChecklistItem("CL-10", "Relay Valve", "", 1, ""),
+    ChecklistItem("CL-11", "Lift Axle KIT", "", 1, ""),
+    ChecklistItem("CL-12", "B/S Eng Mtg Bkt", "", 1, ""),
+    ChecklistItem("CL-13", "Bump Stopper", "", 1, ""),
+    ChecklistItem("CL-14", "Spring Hanger Bkt", "", 1, ""),
+    ChecklistItem("CL-15", "APU Fitment with bkt", "", 1, ""),
+    ChecklistItem("CL-16", "Relay Valve", "", 1, ""),
+    ChecklistItem("CL-17", "Spring Hanger Bkt", "", 1, ""),
+    ChecklistItem("CL-18", "B/S ARB Rear mtg BKT", "", 1, ""),
+    ChecklistItem("CL-19", "Articulation Stopper", "", 1, ""),
 ]
 
 # ── Vehicle model registry ─────────────────────────────────────────────────────
@@ -87,32 +64,32 @@ VEHICLE_MODELS: Dict[str, VehicleModel] = {
     "4832TK": VehicleModel(
         code="4832TK",
         name="Tata 4832 TK – Long Member Frame",
-        description="Heavy duty long member chassis frame — full 11-point checklist",
-        checklist=_BASE_CHECKLIST,
+        description="Heavy duty long member chassis frame — full 19-point checklist",
+        checklist=_PREFITMENT_CHECKLIST,
     ),
     "2518": VehicleModel(
         code="2518",
         name="Tata 2518 – Medium Frame",
-        description="Medium duty chassis — 8-point checklist",
-        checklist=_SHORT_CHECKLIST,
+        description="Medium duty chassis — 19-point checklist",
+        checklist=_PREFITMENT_CHECKLIST,
     ),
     "3118": VehicleModel(
         code="3118",
         name="Tata 3118 – Heavy Frame",
-        description="Heavy duty chassis — full 11-point checklist",
-        checklist=_BASE_CHECKLIST,
+        description="Heavy duty chassis — 17-point checklist",
+        checklist=_PREFITMENT_CHECKLIST,
     ),
     "4923": VehicleModel(
         code="4923",
         name="Tata 4923 – Extra Heavy Frame",
-        description="Extra heavy chassis — full 11-point checklist",
-        checklist=_BASE_CHECKLIST,
+        description="Extra heavy chassis — 17-point checklist",
+        checklist=_PREFITMENT_CHECKLIST,
     ),
     "DEFAULT": VehicleModel(
         code="DEFAULT",
         name="Generic Frame",
-        description="Default checklist — all 11 checkpoints",
-        checklist=_BASE_CHECKLIST,
+        description="Default checklist — all 19 checkpoints",
+        checklist=_PREFITMENT_CHECKLIST,
     ),
 }
 

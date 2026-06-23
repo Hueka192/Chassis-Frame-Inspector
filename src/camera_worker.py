@@ -198,9 +198,9 @@ class DemoFrameWorker(QThread):
         while not self._stop:
             frame = self._generate_frame(offset)
             self.frame_ready.emit(self.cam_id, frame)
-            offset = (offset + 2) % 3072
+            offset = (offset + 6) % 3072
             self._frame_count += 1
-            time.sleep(1 / 3)
+            time.sleep(1 / 15)
 
     def _generate_frame(self, offset: int) -> np.ndarray:
         W, H = 1280, 720

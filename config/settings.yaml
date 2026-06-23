@@ -25,91 +25,129 @@ camera2:
   width: 3072
 checkpoints:
   CL-01:
-    name: Trunnion Bracket – Long Member
-    x: 0.3
-    y: 0.55
-    w: 0.10
-    h: 0.16
+    h: 0.1796
+    name: Resilense bkt (5)
+    w: 0.0593
+    x: 0.4039
+    y: 0.1838
   CL-02:
-    name: V-Rod Corner Bracket – Frame
-    x: 0.72
-    y: 0.42
-    w: 0.09
-    h: 0.10
+    h: 0.1796
+    name: Battery Carrier
+    w: 0.0593
+    x: 0.4039
+    y: 0.1838
   CL-03:
-    name: Articulation Stopper – Frame
-    x: 0.78
-    y: 0.58
-    w: 0.07
-    h: 0.09
+    h: 0.1796
+    name: Air Tank
+    w: 0.0593
+    x: 0.4039
+    y: 0.1838
   CL-04:
-    name: Trunnion Bracket – Cross Member
-    x: 0.38
-    y: 0.5
-    w: 0.09
-    h: 0.12
+    h: 0.0925
+    name: B/S Bumper support bkt
+    w: 0.0305
+    x: 0.0207
+    y: 0.2737
   CL-05:
-    name: Anti-Roll Bar Sub-Assembly
-    x: 0.62
-    y: 0.62
-    w: 0.14
-    h: 0.10
+    h: 0.0925
+    name: Bumper support bkt
+    w: 0.0305
+    x: 0.0207
+    y: 0.2737
   CL-06:
-    name: V-Rod Mounting – Corner Bracket
-    x: 0.72
-    y: 0.5
-    w: 0.08
-    h: 0.09
+    h: 0.033
+    name: Relay Valve
+    w: 0.0624
+    x: 0.2822
+    y: 0.3753
   CL-07:
-    name: Parking Relay Valve – Fitment
-    x: 0.5
-    y: 0.58
-    w: 0.07
-    h: 0.08
+    h: 0.033
+    name: Link Rod
+    w: 0.0624
+    x: 0.2822
+    y: 0.3753
   CL-08:
-    name: Parking Relay Valve – Pipe Connection
-    x: 0.5
-    y: 0.62
-    w: 0.06
-    h: 0.07
+    h: 0.2032
+    name: B/S Trunnion bkt mtg on frame
+    w: 0.0472
+    x: 0.8238
+    y: 0.3754
   CL-09:
-    name: PTC Connector – Rear Brake Pipe
-    x: 0.85
-    y: 0.38
-    w: 0.06
-    h: 0.07
+    h: 0.0788
+    name: PTC
+    w: 0.0266
+    x: 0.9045
+    y: 0.4096
   CL-10:
-    name: Resilience Brackets – Frame (×5)
-    x: 0.25
-    y: 0.45
-    w: 0.18
-    h: 0.08
+    h: 0.0652
+    name: Relay Valve
+    w: 0.0215
+    x: 0.7752
+    y: 0.4165
   CL-11:
-    name: Front Shock Absorber Brackets (×4)
-    x: 0.12
-    y: 0.52
-    w: 0.16
-    h: 0.08
-serial:
-  enabled: true
-  port: COM4
-  baudrate: 9600
-  bytesize: 8
-  parity: N
-  stopbits: 1
-  flow_control: none
-
-database:
-  host: 192.168.11.199
-  port: 5432
-  database: kitting_zone_4
-  user: postgres
-  password: postgres
-  table: kitting_zone_4
-  vin_column: VIN_no
-  vc_column: VC_no
-
+    h: 0.9402
+    name: Lift Axle KIT
+    w: 0.1155
+    x: 0.5899
+    y: 0.5065
+  CL-12:
+    h: 0.0954
+    name: B/S Eng Mtg Bkt
+    w: 0.0263
+    x: 0.1927
+    y: 0.6691
+  CL-13:
+    h: 0.0685
+    name: Bump Stopper
+    w: 0.0263
+    x: 0.1399
+    y: 0.6754
+  CL-14:
+    h: 0.0954
+    name: Spring Hanger Bkt
+    w: 0.0263
+    x: 0.058
+    y: 0.6813
+  CL-15:
+    h: 0.1311
+    name: APU Fitment with bkt
+    w: 0.0395
+    x: 0.4047
+    y: 0.6826
+  CL-16:
+    h: 0.1311
+    name: Relay Valve
+    w: 0.0395
+    x: 0.4047
+    y: 0.6826
+  CL-17:
+    h: 0.1311
+    name: Spring Hanger Bkt
+    w: 0.0395
+    x: 0.4047
+    y: 0.6826
+  CL-18:
+    h: 0.0661
+    name: B/S ARB Rear mtg BKT
+    w: 0.0358
+    x: 0.9586
+    y: 0.6848
+  CL-19:
+    h: 0.1292
+    name: Articulation Stopper
+    w: 0.0352
+    x: 0.8869
+    y: 0.718
 conveyor_direction: left_to_right
+database:
+  database: kitting_zone_4
+  host: 192.168.11.199
+  password: postgres
+  port: 5432
+  table: kitting_zone_4
+  user: postgres
+  vc_column: VC_no
+  vin_column: VIN_no
 detection:
   confidence_threshold: 0.45
   frame_skip: 3
@@ -121,6 +159,14 @@ detection:
   roi_top_pct: 0.0
   use_gpu: false
 line_id: LINE-03
-reference_image: slide_10.png
+reference_image: checkpoints_new.png
+serial:
+  baudrate: 9600
+  bytesize: 8
+  enabled: true
+  flow_control: none
+  parity: N
+  port: COM4
+  stopbits: 1
 station_id: 01_VIN_Scan
 theme: dark

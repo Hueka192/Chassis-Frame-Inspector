@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QSizePolicy
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot, QRect, QPoint
-from PyQt5.QtGui import QFont, QFontMetrics, QPixmap, QPainter, QColor, QPen, QBrush
+from PyQt5.QtGui import QFont, QFontMetrics, QPixmap, QPainter, QColor, QPen, QBrush, QImage
 
 from src.camera_worker    import CameraWorker, DemoFrameWorker
 from src.camera_widget    import CameraWidget
@@ -35,6 +35,14 @@ os.makedirs(NG_DIR, exist_ok=True)
 STATE_SCAN_VC = "SCAN_VC"
 STATE_INSPECT = "INSPECT"
 STATE_DONE    = "DONE"
+
+# Valid VC numbers for this model — any VC outside this list is NA
+_VALID_VC_NUMBERS = {
+    "51621768000R", "51621668000R", "51622268000R", "51622568000R",
+    "51622668000R", "51621970000R", "51622070000R", "51621870000R",
+    "51622170000R", "51622270000R", "51621170000R", "51620970000R",
+    "51621070000R", "51621270000R",
+}
 
 _SLIDE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                           "assets", "checkpoint_slides")
@@ -107,30 +115,37 @@ class ToastPopup(QWidget):
 class TitleBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(52)
-        self.setStyleSheet("background:#080a12;")
+        self.setFixedHeight(76)
+        self.setStyleSheet(
+            "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #080a12,stop:1 #0f1430);"
+        )
         lay = QHBoxLayout(self)
         lay.setContentsMargins(14, 0, 14, 0)
 
         # Tata Motors logo
+        def _make_white_semi_transparent(px: QPixmap, tolerance: int = 30, alpha: int = 160) -> QPixmap:
+            img = px.toImage().convertToFormat(QImage.Format_ARGB32)
+            for y in range(img.height()):
+                for x in range(img.width()):
+                    c = QColor(img.pixel(x, y))
+                    if (c.red() > 255 - tolerance and c.green() > 255 - tolerance
+                            and c.blue() > 255 - tolerance):
+                        img.setPixelColor(x, y, QColor(c.red(), c.green(), c.blue(), alpha))
+            return QPixmap.fromImage(img)
+
         logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                  "assets", "tatamotors_logo.png")
+                                  "assets", "TATA_MOTORS_LOGO.jpg")
         logo = QLabel()
-        logo.setFixedSize(120, 40)
-        logo.setStyleSheet("background:transparent;")
+        logo.setFixedSize(240, 68)
+        logo.setStyleSheet("background:#000; border-radius:4px; padding:2px;")
         if os.path.exists(logo_path):
             px = QPixmap(logo_path)
             if not px.isNull():
-                logo.setPixmap(px.scaled(120, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                px = _make_white_semi_transparent(px)
+                logo.setPixmap(px.scaled(240, 68, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
         logo.setAlignment(Qt.AlignCenter)
         lay.addWidget(logo)
-
-        # Brand name beside logo
-        brand = QLabel("TATA MOTORS")
-        brand.setStyleSheet(
-            "color:#aa88ff; font-size:12px; font-weight:bold; letter-spacing:2px;"
-        )
-        lay.addWidget(brand)
 
         lay.addSpacing(16)
 
@@ -140,7 +155,7 @@ class TitleBar(QWidget):
 
         ttl = QLabel("SMART QUALITY GATE INSPECTION")
         ttl.setStyleSheet(
-            "color:#dde2f0; font-size:16px; font-weight:bold; letter-spacing:2px;"
+            "color:#dde2f0; font-size:17px; font-weight:bold; letter-spacing:3px;"
         )
         lay.addWidget(ttl)
         lay.addStretch()
@@ -169,8 +184,8 @@ class ChassisPhotoWidget(QWidget):
     live detection-status markers overlaid. Image and checkpoint positions
     are loaded from ConfigManager.
 
-    Detected part labels appear outside the image edges with animated
-    connecting arrows for a clean, readable layout.
+    Checkpoint names are baked into the reference image. Detection markers
+    (dashed bounding boxes) are red by default and turn green on detection.
     """
 
     def __init__(self, parent=None):
@@ -240,7 +255,7 @@ class ChassisPhotoWidget(QWidget):
         if self._ref_pix is None:
             return
         self._scaled = self._ref_pix.scaled(
-            self.width() - 20, self.height() - 50,
+            self.width() - 20, self.height() - 20,
             Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
 
@@ -269,7 +284,6 @@ class ChassisPhotoWidget(QWidget):
                 img_w = px.width()
                 img_h = px.height()
         else:
-            # Draw placeholder grid when no reference image
             painter.setPen(QPen(QColor(30, 35, 50), 1))
             for gx in range(0, W, 60):
                 painter.drawLine(gx, 0, gx, H - 30)
@@ -279,20 +293,10 @@ class ChassisPhotoWidget(QWidget):
             painter.setFont(QFont("Segoe UI", 12))
             painter.drawText(self.rect(), Qt.AlignCenter, "Chassis reference\n(no image loaded)")
 
-        font_label = QFont("Segoe UI", 9, QFont.Bold)
-        label_fm = QFontMetrics(font_label)
-        anim_ms = int(time.time() * 1000) % 2000
         phase = self._anim_phase
-
-        _LABEL_BG = QColor("#ffd400")     # highlighter yellow, like the reference deck
-        _LABEL_BORDER = QColor("#5c4400")
-        _LABEL_TEXT = QColor("#1a1400")
-
-        label_jobs = []  # collected here, drawn after collision resolution
 
         for item_id, (fx, fy) in self._checkpoint_positions.items():
             status = self._statuses.get(item_id, "PENDING")
-            name = self._item_names.get(item_id, item_id)
             box_fw, box_fh = self._checkpoint_boxes.get(item_id, (0.09, 0.10))
 
             mx = ix + int(img_w * fx)
@@ -302,13 +306,10 @@ class ChassisPhotoWidget(QWidget):
             bx0, by0 = mx - bw // 2, my - bh // 2
             bx1, by1 = bx0 + bw, by0 + bh
 
-            is_ok = status == "OK"
-            status_color = QColor("#00e676") if is_ok else QColor("#ff5252")
+            is_detected = status == "OK"
+            status_color = QColor("#00e676") if is_detected else QColor("#ff5252")
 
-            # ── Dashed bounding-box around the part (red = not detected,
-            #    green = detected) — mirrors the master checkpoint deck's
-            #    hand-drawn red/yellow callout boxes.
-            if is_ok:
+            if is_detected:
                 fill = QColor(status_color)
                 fill.setAlpha(40)
                 painter.setBrush(fill)
@@ -323,8 +324,7 @@ class ChassisPhotoWidget(QWidget):
             painter.setPen(pen)
             painter.drawRect(QRect(bx0, by0, bw, bh))
 
-            if is_ok:
-                # Small confirmed checkmark badge at the box's top-right corner.
+            if is_detected:
                 bcx, bcy = bx1, by0
                 painter.setBrush(QColor(6, 8, 18))
                 painter.setPen(Qt.NoPen)
@@ -334,76 +334,6 @@ class ChassisPhotoWidget(QWidget):
                 painter.setPen(QPen(QColor(4, 20, 10), 2.2, cap=Qt.RoundCap))
                 painter.drawLine(bcx - 3, bcy + 1, bcx - 1, bcy + 3)
                 painter.drawLine(bcx - 1, bcy + 3, bcx + 4, bcy - 3)
-
-            # ── Queue the yellow label for this checkpoint — drawn in a
-            #    second pass once vertical collisions are resolved, so
-            #    closely-spaced checkpoints never produce overlapping tags.
-            num = "".join(ch for ch in item_id if ch.isdigit())
-            num = str(int(num)) if num else item_id
-            lbl = f"{num}. {name}"
-            lbl = lbl[:34] + (".." if len(lbl) > 34 else "")
-
-            tw = label_fm.horizontalAdvance(lbl) + 14
-            th = 17
-            side = "left" if fx < 0.5 else "right"
-
-            label_margin = 6
-            if side == "left":
-                lx = label_margin
-                line_end_x, line_end_y = bx0, my
-            else:
-                lx = W - label_margin - tw
-                line_end_x, line_end_y = bx1, my
-            lx = max(label_margin, min(lx, W - label_margin - tw))
-
-            ideal_ly = max(label_margin, min(my - th // 2, H - 50 - th - label_margin))
-
-            label_jobs.append({
-                "side": side, "lx": lx, "ly": ideal_ly, "tw": tw, "th": th,
-                "line_end": (line_end_x, line_end_y), "color": status_color,
-                "text": lbl,
-            })
-
-        # ── Resolve vertical overlaps independently for each side, so a
-        #    cluster of nearby checkpoints stacks its tags cleanly instead
-        #    of drawing on top of each other.
-        gap = 3
-        for side in ("left", "right"):
-            jobs = sorted((j for j in label_jobs if j["side"] == side),
-                          key=lambda j: j["ly"])
-            last_bottom = -1
-            for j in jobs:
-                if j["ly"] < last_bottom + gap:
-                    j["ly"] = last_bottom + gap
-                last_bottom = j["ly"] + j["th"]
-            # If the stack ran past the bottom of the image area, shift the
-            # whole stack up so the last tag still stays on-screen.
-            overflow = (jobs[-1]["ly"] + jobs[-1]["th"]) - (H - 50 - label_margin) if jobs else 0
-            if overflow > 0:
-                for j in jobs:
-                    j["ly"] = max(label_margin, j["ly"] - overflow)
-
-        # ── Draw all labels + leader lines on top of the boxes.
-        for j in label_jobs:
-            lx, ly, tw, th = j["lx"], j["ly"], j["tw"], j["th"]
-            line_end_x, line_end_y = j["line_end"]
-            color = j["color"]
-            line_start_x = lx + tw if j["side"] == "left" else lx
-
-            painter.setPen(QPen(color, 1.4))
-            painter.drawLine(line_start_x, ly + th // 2, line_end_x, line_end_y)
-            painter.setBrush(color)
-            painter.setPen(Qt.NoPen)
-            painter.drawEllipse(QPoint(line_end_x, line_end_y), 3, 3)
-
-            painter.setBrush(_LABEL_BG)
-            painter.setPen(QPen(_LABEL_BORDER, 1))
-            painter.drawRect(lx, ly, tw, th)
-
-            painter.setPen(_LABEL_TEXT)
-            painter.setFont(font_label)
-            painter.drawText(QRect(lx + 2, ly, tw - 4, th),
-                             Qt.AlignLeft | Qt.AlignVCenter, j["text"])
 
         # Legend strip at bottom
         ly = H - 28
@@ -436,7 +366,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Smart Quality Gate Inspection")
-        self.showMaximized()
+        self.showFullScreen()
 
         self._cfg        = ConfigManager.instance().cfg
         self._demo_mode  = False
@@ -467,6 +397,11 @@ class MainWindow(QMainWindow):
         self._finalise_timer = QTimer(self)
         self._finalise_timer.setSingleShot(True)
         self._finalise_timer.timeout.connect(self._auto_finalise)
+
+        # Demo auto-detect timer — marks checkpoints green one by one
+        self._demo_detect_timer = QTimer(self)
+        self._demo_detect_timer.timeout.connect(self._demo_auto_detect)
+        self._demo_checkpoint_idx = 0
 
         self._build_ui()
         self._connect_signals()
@@ -508,27 +443,27 @@ class MainWindow(QMainWindow):
         tog_lay.setSpacing(4)
 
         self._btn_left = QPushButton("◀  LEFT VIEW")
-        self._btn_left.setFixedHeight(26)
+        self._btn_left.setFixedHeight(30)
         self._btn_left.setCheckable(True)
         self._btn_left.setChecked(True)
         self._btn_left.setStyleSheet(
             "QPushButton{background:#00bcd433;color:#00bcd4;"
-            "border:1px solid #00bcd466;border-radius:4px;"
-            "font-size:9px;font-weight:bold;padding:0 10px;}"
-            "QPushButton:checked{background:#00bcd455;}"
+            "border:2px solid #00bcd466;border-radius:6px;"
+            "font-size:10px;font-weight:bold;padding:0 14px;}"
+            "QPushButton:checked{background:#00bcd4;color:#ffffff;border:2px solid #00bcd4;}"
             "QPushButton:hover{background:#00bcd444;}"
         )
         self._btn_left.clicked.connect(lambda: self._toggle_camera(1))
 
         self._btn_right = QPushButton("RIGHT VIEW  ▶")
-        self._btn_right.setFixedHeight(26)
+        self._btn_right.setFixedHeight(30)
         self._btn_right.setCheckable(True)
         self._btn_right.setChecked(False)
         self._btn_right.setStyleSheet(
             "QPushButton{background:#aa88ff33;color:#aa88ff;"
-            "border:1px solid #aa88ff66;border-radius:4px;"
-            "font-size:9px;font-weight:bold;padding:0 10px;}"
-            "QPushButton:checked{background:#aa88ff55;}"
+            "border:2px solid #aa88ff66;border-radius:6px;"
+            "font-size:10px;font-weight:bold;padding:0 14px;}"
+            "QPushButton:checked{background:#aa88ff;color:#ffffff;border:2px solid #aa88ff;}"
             "QPushButton:hover{background:#aa88ff44;}"
         )
         self._btn_right.clicked.connect(lambda: self._toggle_camera(2))
@@ -656,7 +591,11 @@ class MainWindow(QMainWindow):
         """
         bar = QWidget()
         bar.setFixedHeight(76)
-        bar.setStyleSheet("background:#0d0f18; border-bottom:1px solid #2a2d3a;")
+        bar.setStyleSheet(
+            "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #0d0f18,stop:1 #11162a);"
+            "border-bottom:1px solid #2a2d3a;"
+        )
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(12, 6, 12, 6)
         lay.setSpacing(10)
@@ -679,13 +618,13 @@ class MainWindow(QMainWindow):
         vin_block.addWidget(vin_lbl)
         self._vin_input = QLineEdit()
         self._vin_input.setPlaceholderText("17-digit VIN (MAT…)")
-        self._vin_input.setFixedWidth(180)
-        self._vin_input.setFixedHeight(30)
+        self._vin_input.setFixedWidth(200)
+        self._vin_input.setFixedHeight(32)
         self._vin_input.setMaxLength(17)
         self._vin_input.setStyleSheet(
-            "QLineEdit{background:#0f1120;color:#ffd740;border:1px solid #ffd74055;"
-            "border-radius:4px;font-size:13px;font-weight:bold;font-family:Consolas;padding:2px 8px;}"
-            "QLineEdit:focus{border:1px solid #ffd740;}"
+            "QLineEdit{background:#0f1120;color:#ffd740;border:2px solid #ffd74055;"
+            "border-radius:6px;font-size:13px;font-weight:bold;font-family:Consolas;padding:2px 10px;}"
+            "QLineEdit:focus{border:2px solid #ffd740;background:#151830;}"
         )
         self._vin_input.returnPressed.connect(self._submit_scan)
         self._vin_input.textChanged.connect(self._on_vin_changed)
@@ -702,13 +641,13 @@ class MainWindow(QMainWindow):
         vc_block.addWidget(vc_lbl)
         self._vc_input = QLineEdit()
         self._vc_input.setPlaceholderText("12-digit VC…")
-        self._vc_input.setFixedWidth(170)
-        self._vc_input.setFixedHeight(30)
+        self._vc_input.setFixedWidth(190)
+        self._vc_input.setFixedHeight(32)
         self._vc_input.setMaxLength(12)
         self._vc_input.setStyleSheet(
-            "QLineEdit{background:#0f1120;color:#00bcd4;border:1px solid #00bcd455;"
-            "border-radius:4px;font-size:13px;font-weight:bold;font-family:Consolas;padding:2px 8px;}"
-            "QLineEdit:focus{border:1px solid #00bcd4;}"
+            "QLineEdit{background:#0f1120;color:#00bcd4;border:2px solid #00bcd455;"
+            "border-radius:6px;font-size:13px;font-weight:bold;font-family:Consolas;padding:2px 10px;}"
+            "QLineEdit:focus{border:2px solid #00bcd4;background:#151830;}"
         )
         self._vc_input.returnPressed.connect(self._submit_scan)
         self._vc_input.textChanged.connect(self._on_vc_changed)
@@ -716,11 +655,13 @@ class MainWindow(QMainWindow):
         lay.addLayout(vc_block)
 
         self._scan_btn = QPushButton("▶ SCAN")
-        self._scan_btn.setFixedSize(70, 30)
+        self._scan_btn.setFixedSize(80, 32)
         self._scan_btn.setStyleSheet(
-            "QPushButton{background:#00bcd433;color:#00bcd4;border:1px solid #00bcd466;"
-            "border-radius:4px;font-size:11px;font-weight:bold;}"
-            "QPushButton:hover{background:#00bcd466;}"
+            "QPushButton{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #00bcd433,stop:1 #0088aa33);color:#00bcd4;"
+            "border:2px solid #00bcd466;border-radius:6px;"
+            "font-size:11px;font-weight:bold;}"
+            "QPushButton:hover{background:#00bcd466;border:2px solid #00bcd4;}"
         )
         self._scan_btn.setToolTip("Submit VIN / VC (or press Enter)")
         self._scan_btn.clicked.connect(self._submit_scan)
@@ -746,6 +687,7 @@ class MainWindow(QMainWindow):
     def _enter_state(self, state: str):
         self._state = state
         self._finalise_timer.stop()
+        self._demo_detect_timer.stop()
 
         if state == STATE_SCAN_VC:
             self._clear_inputs()
@@ -781,6 +723,11 @@ class MainWindow(QMainWindow):
                 self._checklist.load_vehicle(self._current_vc, self._current_model, self._current_vin)
 
             self._finalise_timer.start(_AUTO_FINALISE_DELAY_MS)
+
+            # Start demo auto-detect if in demo mode
+            if self._demo_mode and self._current_model:
+                self._demo_checkpoint_idx = 0
+                self._demo_detect_timer.start(800)
 
         elif state == STATE_DONE:
             self.stats_bar.on_verdict("OK")
@@ -837,7 +784,13 @@ class MainWindow(QMainWindow):
         self._submit_timer.stop()
         vin = self._vin_input.text().strip().upper()
         vc  = self._vc_input.text().strip().upper()
-        if len(vin) == 17 and vin.startswith("MAT") and len(vc) >= 4:
+        if self._demo_mode:
+            if not vin:
+                vin = f"DEMO{vc or 'VIN'}000001"
+            if not vc:
+                vc = "4832TK000001"
+            self._on_scan_submitted(vin, vc)
+        elif len(vin) == 17 and vin.startswith("MAT") and len(vc) >= 4:
             self._on_scan_submitted(vin, vc)
 
     def _clear_inputs(self):
@@ -845,8 +798,56 @@ class MainWindow(QMainWindow):
         self._vc_input.clear()
 
     def _on_scan_submitted(self, vin: str, vc: str):
+        # Skip NA check in demo mode
+        if not self._demo_mode and vc not in _VALID_VC_NUMBERS:
+            self._on_vc_not_applicable(vin, vc)
+            return
         model = resolve_model(vc)
         self._on_vc_accepted(vin, vc, model)
+
+    def _on_vc_not_applicable(self, vin: str, vc: str):
+        """Handle a VC that is not in the valid list — mark everything NA."""
+        if self._state in (STATE_INSPECT, STATE_DONE):
+            self._auto_finalise()
+
+        model = resolve_model(vc)
+        self._current_vin    = vin
+        self._current_vc     = vc
+        self._current_model  = model
+        self._scan_start     = time.time()
+        self._frame_in_view  = False
+
+        self._current_veh_id = self._db.create_vehicle(
+            self._session_id, vc, vin,
+            model.code, model.name,
+            len(model.checklist)
+        )
+        for item in model.checklist:
+            self._db.save_checklist_item(
+                self._current_veh_id, item.id, item.name, "NA"
+            )
+
+        total = len(model.checklist)
+        self._db.finalise_vehicle(self._current_veh_id, "NA", 0, 0)
+
+        # Update stats with NA count
+        stats = self._db.get_session_stats(self._session_id)
+        self.stats_bar.on_stats(stats)
+        self.stats_bar.on_verdict("NA")
+
+        self.statusBar().showMessage(
+            f"VC {vc} not applicable for this model — marked NA"
+        )
+        self._show_toast(f"✖ VC {vc} not applicable for this model", 4000)
+
+        # Log and reset
+        logger.info(f"VC={vc} not in valid list → NA")
+        self._current_vin     = ""
+        self._current_vc      = ""
+        self._current_model   = None
+        self._current_veh_id  = 0
+        self._frame_in_view   = False
+        self._enter_state(STATE_SCAN_VC)
 
     def _on_vc_accepted(self, vin: str, vc: str, model: VehicleModel):
         if self._state in (STATE_INSPECT, STATE_DONE):
@@ -1063,6 +1064,23 @@ class MainWindow(QMainWindow):
             self._det_worker.reload_detector()
             # Reload chassis overlay config
             self._chassis_photo._load_config()
+
+    @pyqtSlot()
+    def _demo_auto_detect(self):
+        """In demo mode, progressively mark checkpoints as detected."""
+        if not self._demo_mode or self._state != STATE_INSPECT:
+            self._demo_detect_timer.stop()
+            return
+        if not self._current_model or not self._current_model.checklist:
+            return
+        items = self._current_model.checklist
+        if self._demo_checkpoint_idx < len(items):
+            item = items[self._demo_checkpoint_idx]
+            self._on_checkpoint_hit(int(item.id.split("-")[1]))
+            self._demo_checkpoint_idx += 1
+        else:
+            self._demo_detect_timer.stop()
+            self._show_toast("✔ All checkpoints detected in demo!", 2000)
 
     @pyqtSlot()
     def _toggle_demo(self):

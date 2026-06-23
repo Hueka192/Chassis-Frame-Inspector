@@ -159,7 +159,7 @@ class Database:
         self._conn.commit()
 
     def finalise_vehicle(self, vehicle_id: int, verdict: str,
-                         ok_count: int, ng_count: int):
+                         ok_count: int, ng_count: int, na_count: int = 0):
         self._conn.execute(
             """UPDATE vehicles
                SET verdict=?, finalise_time=?, ok_count=?, ng_count=?
@@ -177,6 +177,7 @@ class Database:
                 COUNT(*) as total,
                 SUM(CASE WHEN verdict='OK' THEN 1 ELSE 0 END) as ok,
                 SUM(CASE WHEN verdict='NG' THEN 1 ELSE 0 END) as ng,
+                SUM(CASE WHEN verdict='NA' THEN 1 ELSE 0 END) as na,
                 SUM(CASE WHEN verdict='IN_PROGRESS' THEN 1 ELSE 0 END) as inprog
                FROM vehicles WHERE session_id=?""",
             (session_id,)
@@ -184,10 +185,12 @@ class Database:
         total = row["total"] or 0
         ok    = row["ok"]    or 0
         ng    = row["ng"]    or 0
+        na    = row["na"]    or 0
         return {
             "total": total,
             "ok":    ok,
             "ng":    ng,
+            "na":    na,
             "yield": (ok / total * 100) if total else 0.0,
         }
 
@@ -215,14 +218,16 @@ class Database:
         row = self._conn.execute(
             """SELECT COUNT(*) as total,
                 SUM(CASE WHEN verdict='OK' THEN 1 ELSE 0 END) as ok,
-                SUM(CASE WHEN verdict='NG' THEN 1 ELSE 0 END) as ng
+                SUM(CASE WHEN verdict='NG' THEN 1 ELSE 0 END) as ng,
+                SUM(CASE WHEN verdict='NA' THEN 1 ELSE 0 END) as na
                FROM vehicles"""
         ).fetchone()
         total = row["total"] or 0
         ok    = row["ok"]    or 0
         ng    = row["ng"]    or 0
+        na    = row["na"]    or 0
         return {
-            "total": total, "ok": ok, "ng": ng,
+            "total": total, "ok": ok, "ng": ng, "na": na,
             "yield": (ok / total * 100) if total else 0.0,
         }
 

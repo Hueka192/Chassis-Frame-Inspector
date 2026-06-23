@@ -40,10 +40,18 @@ class CameraWidget(QWidget):
         self._zoom = 1.0
         self._min_zoom = 1.0
         self._max_zoom = 4.0
+        self._pan_offset_x = 0.0
+        self._pan_offset_y = 0.0
+        self._dragging = False
+        self._drag_start_x = 0
+        self._drag_start_y = 0
+        self._pan_start_x = 0.0
+        self._pan_start_y = 0.0
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumSize(320, 180)
         self.setStyleSheet("background:#0d0f14; border:1px solid #2a2d3a;")
         self.setFocusPolicy(Qt.WheelFocus)
+        self.setMouseTracking(True)
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
@@ -51,8 +59,54 @@ class CameraWidget(QWidget):
             self._zoom = min(self._max_zoom, self._zoom + 0.25)
         else:
             self._zoom = max(self._min_zoom, self._zoom - 0.25)
+        # Clamp pan offsets after zoom change
+        self._clamp_pan()
         self.update()
         event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._zoom > 1.0 and self._pixmap is not None:
+            self._dragging = True
+            self._drag_start_x = event.x()
+            self._drag_start_y = event.y()
+            self._pan_start_x = self._pan_offset_x
+            self._pan_start_y = self._pan_offset_y
+            self.setCursor(Qt.ClosedHandCursor)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            dx = event.x() - self._drag_start_x
+            dy = event.y() - self._drag_start_y
+            self._pan_offset_x = self._pan_start_x + dx
+            self._pan_offset_y = self._pan_start_y + dy
+            self._clamp_pan()
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._dragging:
+            self._dragging = False
+            self.setCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
+    def _clamp_pan(self):
+        if self._pixmap is None:
+            return
+        W, H = self.width(), self.height()
+        # Calculate the max pan offset (negative = left/up, positive = right/down)
+        zoomed_w = self._pixmap.width() * self._zoom
+        zoomed_h = self._pixmap.height() * self._zoom
+        if zoomed_w > W:
+            max_pan = (zoomed_w - W) // 2
+            self._pan_offset_x = max(-max_pan, min(max_pan, self._pan_offset_x))
+        else:
+            self._pan_offset_x = 0
+        if zoomed_h > H:
+            max_pan = (zoomed_h - H) // 2
+            self._pan_offset_y = max(-max_pan, min(max_pan, self._pan_offset_y))
+        else:
+            self._pan_offset_y = 0
 
     @pyqtSlot(np.ndarray)
     def update_frame(self, frame_bgr: np.ndarray):
@@ -98,12 +152,22 @@ class CameraWidget(QWidget):
             if self._zoom > 1.0:
                 sw = int(pm.width() / self._zoom)
                 sh = int(pm.height() / self._zoom)
-                sx = (pm.width() - sw) // 2
-                sy = (pm.height() - sh) // 2
+                cx = pm.width() // 2
+                cy = pm.height() // 2
+                # Apply pan offset to the crop center
+                pan_scale = 1.0 / self._zoom
+                offset_x = int(self._pan_offset_x * pan_scale)
+                offset_y = int(self._pan_offset_y * pan_scale)
+                sx = cx - sw // 2 - offset_x
+                sy = cy - sh // 2 - offset_y
+                sx = max(0, min(sx, pm.width() - sw))
+                sy = max(0, min(sy, pm.height() - sh))
                 pm = pm.copy(sx, sy, sw, sh)
                 pm = pm.scaled(W, H, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             else:
                 pm = pm.scaled(W, H, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self._pan_offset_x = 0
+                self._pan_offset_y = 0
             x  = (W - pm.width())  // 2
             y  = (H - pm.height()) // 2
             painter.drawPixmap(x, y, pm)

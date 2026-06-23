@@ -42,9 +42,11 @@ logger = get_logger("checklist")
 # ── Palette ──────────────────────────────────────────────────────────────
 _OK_COLOR       = "#00e676"   # detected — green
 _NOT_OK_COLOR   = "#ff5252"   # not detected — red
+_NA_COLOR       = "#ffb300"   # not applicable — amber
 _PANEL_BG       = "#0a0c14"
 _ROW_BG         = "#11141f"
 _ROW_BG_OK      = "#06190f"
+_ROW_BG_NA      = "#1a1400"
 _TEXT_PRIMARY   = "#dde2f0"
 _TEXT_DIM       = "#7c8aa3"
 
@@ -60,33 +62,40 @@ def _checkpoint_number(item_id: str) -> str:
 
 
 class StatusDot(QWidget):
-    """Small status indicator — pulsing red (not detected) / solid green (detected)."""
+    """Small status indicator — pulsing red (not detected) / solid green (detected) / amber (NA)."""
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setFixedSize(13, 13)
-        self._ok = False
+        self._status = "PENDING"
         self._phase = 0.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(110)
 
     def _tick(self):
-        if not self._ok:
+        if self._status == "PENDING":
             self._phase = (self._phase + 0.04) % 1.0
             self.update()
+        elif self._status == "NA":
+            self._phase = (self._phase + 0.03) % 1.0
+            self.update()
 
-    def set_ok(self, ok: bool):
-        if self._ok != ok:
-            self._ok = ok
+    def set_status(self, status: str):
+        if self._status != status:
+            self._status = status
             self.update()
 
     def paintEvent(self, _event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
-        if self._ok:
+        if self._status == "OK":
             p.setBrush(QColor(_OK_COLOR))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(center, 5.5, 5.5)
+        elif self._status == "NA":
+            p.setBrush(QColor(_NA_COLOR))
             p.setPen(Qt.NoPen)
             p.drawEllipse(center, 5.5, 5.5)
         else:
@@ -156,9 +165,9 @@ class ChecklistRow(QFrame):
 
     # -- Public API -------------------------------------------------------
     def set_status(self, status: str):
-        """status in {'PENDING', 'OK', 'NG'} — NG visually equals not-detected."""
+        """status in {'PENDING', 'OK', 'NG', 'NA'}."""
         self._status = status
-        self._dot.set_ok(status == "OK")
+        self._dot.set_status(status)
         self._checkbox.blockSignals(True)
         self._checkbox.setChecked(status == "OK")
         self._checkbox.blockSignals(False)
@@ -172,6 +181,8 @@ class ChecklistRow(QFrame):
     def _apply_row_style(self):
         if self._status == "OK":
             bg, border = _ROW_BG_OK, _OK_COLOR + "77"
+        elif self._status == "NA":
+            bg, border = _ROW_BG_NA, _NA_COLOR + "77"
         else:
             bg, border = _ROW_BG, _NOT_OK_COLOR + "44"
         self.setStyleSheet(
