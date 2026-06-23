@@ -359,7 +359,7 @@ class DetectionWorker(QThread):
 
     def stop(self):
         self._stop = True
-        self.wait(5000)
+        self.wait(1000)
 
     def reload_detector(self):
         self._init_detector()

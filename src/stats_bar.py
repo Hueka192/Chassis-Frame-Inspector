@@ -8,13 +8,13 @@ from PyQt5.QtGui import QFont
 
 
 class KPITile(QFrame):
-    def __init__(self, title, value="0", color="#00bcd4", big=False, parent=None):
+    def __init__(self, title, value="0", color="#00bcd4", big=False, parent=None, scale=1.0):
         super().__init__(parent)
         self.setFrameShape(QFrame.NoFrame)
         self.setStyleSheet(
             f"background:#141828; border-radius:8px; border-left:3px solid {color};"
         )
-        self.setFixedHeight(64)
+        self.setFixedHeight(max(48, int(64 * scale)))
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 4, 10, 4)
         lay.setSpacing(1)
@@ -53,11 +53,11 @@ class VerdictBadge(QLabel):
     _FLASH_ON_MS  = 1100
     _FLASH_OFF_MS = 900
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, scale=1.0):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
-        self.setFixedHeight(62)
-        self.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        self.setFixedHeight(max(48, int(62 * scale)))
+        self.setFont(QFont("Segoe UI", max(11, int(14 * scale)), QFont.Bold))
 
         self._current_state = "SCAN_VC"
         self._flash_visible = True
@@ -109,35 +109,40 @@ class StatsBar(QWidget):
     """KPI dashboard bar with scanned VIN/VC info on the left side."""
     scan_submitted = pyqtSignal(str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, scale=1.0):
         super().__init__(parent)
-        self.setFixedHeight(66)
+        self._scale = scale
+        self.setFixedHeight(max(52, int(66 * scale)))
         self.setStyleSheet("background:#0d0f14;")
         self._start = time.time()
         self._build()
 
     def _build(self):
+        s = self._scale
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 4, 10, 4)
-        lay.setSpacing(8)
+        m = max(6, int(10 * s))
+        lay.setContentsMargins(m, max(2, int(4 * s)), m, max(2, int(4 * s)))
+        lay.setSpacing(max(4, int(8 * s)))
 
         # Scanned VIN/VC info (left side)
+        ifsz = max(11, int(13 * s))
+        iw = max(120, int(160 * s))
         self._vin_info = QLabel("")
         self._vin_info.setStyleSheet(
-            "color:#ffd740; font-size:13px; font-weight:bold; font-family:Consolas; background:transparent;"
+            f"color:#ffd740; font-size:{ifsz}px; font-weight:bold; font-family:Consolas; background:transparent;"
         )
-        self._vin_info.setFixedWidth(160)
+        self._vin_info.setFixedWidth(iw)
         self._vc_info = QLabel("")
         self._vc_info.setStyleSheet(
-            "color:#00bcd4; font-size:13px; font-weight:bold; font-family:Consolas; background:transparent;"
+            f"color:#00bcd4; font-size:{ifsz}px; font-weight:bold; font-family:Consolas; background:transparent;"
         )
-        self._vc_info.setFixedWidth(160)
+        self._vc_info.setFixedWidth(iw)
 
         self._vin_info.setVisible(False)
         self._vc_info.setVisible(False)
 
         info_sep = QLabel("│")
-        info_sep.setStyleSheet("color:#2a2d3a; font-size:16px; background:transparent;")
+        info_sep.setStyleSheet(f"color:#2a2d3a; font-size:{max(12, int(16 * s))}px; background:transparent;")
         info_sep.setVisible(False)
         self._info_sep = info_sep
 
@@ -145,20 +150,20 @@ class StatsBar(QWidget):
         lay.addWidget(self._vc_info)
         lay.addWidget(info_sep)
 
-        self.verdict  = VerdictBadge()
-        self.verdict.setFixedWidth(150)
+        self.verdict  = VerdictBadge(scale=s)
+        self.verdict.setFixedWidth(max(120, int(150 * s)))
 
-        self.tile_veh = KPITile("VEHICLES TESTED", "0", "#aa88ff", big=True)
-        self.tile_veh.setFixedWidth(150)
+        self.tile_veh = KPITile("VEHICLES TESTED", "0", "#aa88ff", big=True, scale=s)
+        self.tile_veh.setFixedWidth(max(120, int(150 * s)))
 
-        self.tile_ok  = KPITile("OK",  "0", "#00e676", big=True)
-        self.tile_ok.setFixedWidth(86)
+        self.tile_ok  = KPITile("OK",  "0", "#00e676", big=True, scale=s)
+        self.tile_ok.setFixedWidth(max(64, int(86 * s)))
 
-        self.tile_ng  = KPITile("NG",  "0", "#ff5252", big=True)
-        self.tile_ng.setFixedWidth(86)
+        self.tile_ng  = KPITile("NG",  "0", "#ff5252", big=True, scale=s)
+        self.tile_ng.setFixedWidth(max(64, int(86 * s)))
 
-        self.tile_na  = KPITile("NA",  "0", "#ffb300", big=True)
-        self.tile_na.setFixedWidth(86)
+        self.tile_na  = KPITile("NA",  "0", "#ffb300", big=True, scale=s)
+        self.tile_na.setFixedWidth(max(64, int(86 * s)))
 
         for w in [self.verdict, self.tile_veh, self.tile_ok, self.tile_ng, self.tile_na]:
             lay.addWidget(w)

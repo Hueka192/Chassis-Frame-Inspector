@@ -90,7 +90,13 @@ def main():
     if "QT_QPA_PLATFORM_PLUGIN_PATH" in os.environ:
         logger.info(f"QT_QPA_PLATFORM_PLUGIN_PATH={os.environ['QT_QPA_PLATFORM_PLUGIN_PATH']}")
 
-    qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "style.qss")
+    from src.config_manager import ConfigManager
+    theme = getattr(ConfigManager.instance().cfg, "theme", "dark")
+    qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "assets", f"style_{theme}.qss")
+    if not os.path.exists(qss_path):
+        qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "assets", "style.qss")
     try:
         if os.path.exists(qss_path):
             with open(qss_path, encoding="utf-8") as f:

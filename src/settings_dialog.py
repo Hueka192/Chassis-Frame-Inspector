@@ -8,7 +8,7 @@ import os, shutil
 
 from PyQt5.QtWidgets import (
     QDialog, QTabWidget, QWidget, QFormLayout, QLineEdit,
-    QCheckBox, QDoubleSpinBox, QSpinBox, QDialogButtonBox,
+    QCheckBox, QDoubleSpinBox, QSpinBox, QComboBox, QDialogButtonBox,
     QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
     QListWidget, QListWidgetItem, QGridLayout, QSplitter, QFrame,
     QAbstractItemView, QInputDialog, QMessageBox
@@ -406,6 +406,24 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._overlay_tab, "Chassis Overlay")
         root.addWidget(tabs)
 
+        # Theme selector row
+        theme_row = QHBoxLayout()
+        theme_row.setContentsMargins(12, 4, 12, 4)
+        theme_lbl = QLabel("Appearance:")
+        theme_lbl.setStyleSheet("color:#aabbcc; font-size:10px; font-weight:bold;")
+        theme_row.addWidget(theme_lbl)
+        self._theme_combo = QComboBox()
+        self._theme_combo.addItems(["dark", "light"])
+        self._theme_combo.setCurrentText(self._cfg.theme)
+        self._theme_combo.setStyleSheet(
+            "QComboBox{background:#1c1f2e; color:#dde2f0; border:1px solid #2a2d3a;"
+            "border-radius:4px; padding:4px 8px;}"
+            "QComboBox::drop-down{background:#2a2d3a; border:none; width:20px;}"
+        )
+        theme_row.addWidget(self._theme_combo)
+        theme_row.addStretch()
+        root.addLayout(theme_row)
+
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.setStyleSheet(
             "QPushButton{background:#1c2050; color:#8899ff; border:none;"
@@ -651,6 +669,8 @@ class SettingsDialog(QDialog):
         cps, ref_img = self._overlay_tab.get_data()
         cfg.checkpoints = cps
         cfg.reference_image = ref_img
+
+        cfg.theme = self._theme_combo.currentText()
 
         ConfigManager.instance().save()
         logger.info("Settings saved from dialog")

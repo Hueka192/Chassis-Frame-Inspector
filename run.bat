@@ -1,18 +1,23 @@
 @echo off
-title Chassis Frame Inspector
 cd /d "%~dp0"
 
-echo [INFO] Checking Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python not found. Please install Python 3.9+
-    pause
+    powershell -Command "Write-Host '[ERROR] Python not found. Install Python 3.9+' -Fore Red; Read-Host"
     exit /b 1
 )
 
-echo [INFO] Installing/checking dependencies...
-pip install -r requirements.txt --quiet
+pip install -r requirements.txt --quiet >nul 2>&1
 
-echo [INFO] Starting Chassis Frame Inspector...
-python main.py
-pause
+echo Starting Smart Quality Gate Inspection...
+echo If the app does not appear, run manually: python main.py
+echo (Errors will be logged to logs/inspector_*.log)
+echo.
+start /min /wait "" pythonw main.py
+
+if errorlevel 1 (
+    echo [ERROR] Application exited with code %errorlevel%.
+    echo Run 'python main.py' to see full error output.
+    pause
+)
+exit

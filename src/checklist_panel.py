@@ -50,9 +50,9 @@ _ROW_BG_NA      = "#1a1400"
 _TEXT_PRIMARY   = "#dde2f0"
 _TEXT_DIM       = "#7c8aa3"
 
-_MIN_ROW_WIDTH  = 300   # px — minimum comfortable column width
-_ROW_HEIGHT     = 48    # px — fixed row height
-_MAX_ROWS_CAP   = 8     # safety cap so the grid math always terminates
+_MIN_ROW_WIDTH  = 300
+_ROW_HEIGHT     = 48
+_MAX_ROWS_CAP   = 8
 
 
 def _checkpoint_number(item_id: str) -> str:
@@ -110,27 +110,32 @@ class ChecklistRow(QFrame):
     """A single text-only checklist row: checkbox + status dot + name/id."""
 
     def __init__(self, item, on_toggle: Callable[[str, str], None],
+                 scale: float = 1.0,
                  parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.item = item
         self._on_toggle = on_toggle
         self._status = "PENDING"
+        rh = max(36, int(_ROW_HEIGHT * scale))
 
-        self.setFixedHeight(_ROW_HEIGHT)
+        self.setFixedHeight(rh)
         self.setCursor(Qt.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setToolTip(f"{item.id} — {item.description or item.name}")
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(10, 4, 10, 4)
-        row.setSpacing(8)
+        row.setContentsMargins(max(6, int(10 * scale)), max(2, int(4 * scale)),
+                               max(6, int(10 * scale)), max(2, int(4 * scale)))
+        row.setSpacing(max(4, int(8 * scale)))
 
+        cbsz = max(14, int(18 * scale))
         self._checkbox = QCheckBox()
-        self._checkbox.setFixedSize(18, 18)
+        self._checkbox.setFixedSize(cbsz, cbsz)
         self._checkbox.clicked.connect(self._on_checkbox_clicked)
         row.addWidget(self._checkbox)
 
         self._dot = StatusDot()
+        self._dot.setFixedSize(max(10, int(13 * scale)), max(10, int(13 * scale)))
         row.addWidget(self._dot)
 
         text_box = QVBoxLayout()
@@ -139,23 +144,22 @@ class ChecklistRow(QFrame):
 
         num = _checkpoint_number(item.id)
         full_label = f"{num}. {item.name}"
-        # Truncated once, statically, at construction. Eliding dynamically
-        # from resizeEvent() is a classic Qt footgun: setText() there can
-        # change the size hint and re-trigger layout/resize recursively.
         display_label = (full_label if len(full_label) <= 42
                          else full_label[:40].rstrip() + "…")
+        nfsz = max(9, int(11 * scale))
         self._name_lbl = QLabel(display_label)
         self._name_lbl.setStyleSheet(
-            f"color:{_TEXT_PRIMARY}; font-size:11px; font-weight:600; "
+            f"color:{_TEXT_PRIMARY}; font-size:{nfsz}px; font-weight:600; "
             "background:transparent;"
         )
         self._name_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         text_box.addWidget(self._name_lbl)
 
         qty_txt = f"×{item.qty}  " if getattr(item, "qty", 1) and item.qty > 1 else ""
+        ffsz = max(7, int(8 * scale))
         foot = QLabel(f"{item.id}  ·  {qty_txt}{item.location or '—'}")
         foot.setStyleSheet(
-            f"color:{_TEXT_DIM}; font-size:8px; font-family:Consolas; "
+            f"color:{_TEXT_DIM}; font-size:{ffsz}px; font-family:Consolas; "
             "background:transparent;"
         )
         text_box.addWidget(foot)
@@ -212,8 +216,9 @@ class ChecklistGridPanel(QWidget):
 
     item_changed = pyqtSignal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, scale: float = 1.0, parent: Optional[QWidget] = None):
         super().__init__(parent)
+        self._scale = scale
         self.setStyleSheet(f"background:{_PANEL_BG};")
         self._rows: Dict[str, ChecklistRow] = {}
         self._row_order: List[str] = []
@@ -225,46 +230,52 @@ class ChecklistGridPanel(QWidget):
 
     # -- UI construction ----------------------------------------------------
     def _build(self):
+        s = self._scale
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
         # Header
+        hh = max(22, int(28 * s))
         header = QWidget()
-        header.setFixedHeight(28)
+        header.setFixedHeight(hh)
         header.setStyleSheet(f"background:{_PANEL_BG}; border-top:1px solid #1a1d28;")
         hl = QHBoxLayout(header)
-        hl.setContentsMargins(12, 2, 12, 2)
-        hl.setSpacing(10)
+        hl.setContentsMargins(max(8, int(12 * s)), max(1, int(2 * s)), max(8, int(12 * s)), max(1, int(2 * s)))
+        hl.setSpacing(max(6, int(10 * s)))
 
+        tfsz = max(9, int(10 * s))
         title = QLabel("☑ INSPECTION CHECKLIST")
         title.setStyleSheet(
-            "color:#aa88ff; font-size:10px; font-weight:bold; "
+            f"color:#aa88ff; font-size:{tfsz}px; font-weight:bold; "
             "letter-spacing:1.5px; background:transparent;"
         )
         hl.addWidget(title)
 
+        mfsz = max(9, int(10 * s))
         self._model_lbl = QLabel("— scan VIN / VC to load checklist —")
         self._model_lbl.setStyleSheet(
-            f"color:{_TEXT_DIM}; font-size:10px; background:transparent;"
+            f"color:{_TEXT_DIM}; font-size:{mfsz}px; background:transparent;"
         )
         hl.addWidget(self._model_lbl, stretch=1)
 
+        lfsz = max(8, int(9 * s))
         legend = QLabel()
         legend.setTextFormat(Qt.RichText)
         legend.setText(
             f'<span style="color:{_NOT_OK_COLOR}">●</span> NOT DETECTED &nbsp;&nbsp; '
             f'<span style="color:{_OK_COLOR}">●</span> DETECTED'
         )
-        legend.setStyleSheet("font-size:9px; font-weight:bold; background:transparent;")
+        legend.setStyleSheet(f"font-size:{lfsz}px; font-weight:bold; background:transparent;")
         hl.addWidget(legend)
 
+        pfsz = max(10, int(11 * s))
         self._progress_lbl = QLabel("0 / 0")
         self._progress_lbl.setStyleSheet(
-            "color:#00bcd4; font-size:11px; font-weight:bold; "
+            f"color:#00bcd4; font-size:{pfsz}px; font-weight:bold; "
             "font-family:Consolas; background:transparent;"
         )
-        self._progress_lbl.setFixedWidth(60)
+        self._progress_lbl.setFixedWidth(max(50, int(60 * s)))
         self._progress_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         hl.addWidget(self._progress_lbl)
 
@@ -282,13 +293,16 @@ class ChecklistGridPanel(QWidget):
         self._grid_host = QWidget()
         self._grid_host.setStyleSheet(f"background:{_PANEL_BG};")
         self._grid = QGridLayout(self._grid_host)
-        self._grid.setContentsMargins(10, 8, 10, 8)
-        self._grid.setHorizontalSpacing(8)
-        self._grid.setVerticalSpacing(8)
+        gm = max(6, int(10 * s))
+        self._grid.setContentsMargins(gm, max(4, int(8 * s)), gm, max(4, int(8 * s)))
+        gs = max(4, int(8 * s))
+        self._grid.setHorizontalSpacing(gs)
+        self._grid.setVerticalSpacing(gs)
         self._scroll.setWidget(self._grid_host)
         root.addWidget(self._scroll, stretch=1)
 
         # Idle placeholder (shown when no vehicle is loaded)
+        ifsz = max(10, int(11 * s))
         self._idle_lbl = QLabel(
             "Scan or enter a VIN / VC number in the dashboard above to load "
             "the model-specific inspection checklist."
@@ -296,7 +310,7 @@ class ChecklistGridPanel(QWidget):
         self._idle_lbl.setAlignment(Qt.AlignCenter)
         self._idle_lbl.setWordWrap(True)
         self._idle_lbl.setStyleSheet(
-            f"color:{_TEXT_DIM}; font-size:11px; background:transparent;"
+            f"color:{_TEXT_DIM}; font-size:{ifsz}px; background:transparent;"
         )
         self._grid.addWidget(self._idle_lbl, 0, 0)
 
@@ -310,7 +324,7 @@ class ChecklistGridPanel(QWidget):
         self._model_lbl.setText(f"{model.name}  ({model.code})")
 
         for item in model.checklist:
-            row_widget = ChecklistRow(item, self._handle_row_toggle)
+            row_widget = ChecklistRow(item, self._handle_row_toggle, scale=self._scale)
             self._rows[item.id] = row_widget
             self._row_order.append(item.id)
 
@@ -388,12 +402,12 @@ class ChecklistGridPanel(QWidget):
         if n <= 0:
             return 1, 1
 
-        row_unit = _ROW_HEIGHT + 8  # row height + vertical spacing
-        max_rows_h = max(1, (avail_h + 8) // row_unit)
+        row_unit = int(_ROW_HEIGHT * self._scale) + int(8 * self._scale)
+        max_rows_h = max(1, (avail_h + int(8 * self._scale)) // row_unit)
         max_rows_h = min(max_rows_h, _MAX_ROWS_CAP)
 
-        col_unit = _MIN_ROW_WIDTH + 8
-        max_cols_w = max(1, (avail_w + 8) // col_unit)
+        col_unit = int(_MIN_ROW_WIDTH * self._scale) + int(8 * self._scale)
+        max_cols_w = max(1, (avail_w + int(8 * self._scale)) // col_unit)
 
         # Use as many columns as width comfortably allows (minimises rows),
         # then clamp to what actually fits vertically without a scrollbar.

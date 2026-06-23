@@ -19,7 +19,7 @@ class SerialReader(QThread):
 
     def stop(self):
         self._stop = True
-        self.wait(3000)
+        self.wait(1000)
 
     def run(self):
         cfg = ConfigManager.instance().cfg.serial

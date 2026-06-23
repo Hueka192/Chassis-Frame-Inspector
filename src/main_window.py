@@ -7,24 +7,24 @@ from typing import Dict
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QLabel, QPushButton, QLineEdit, QStackedWidget, QFrame,
-    QSizePolicy
+    QSizePolicy, QApplication
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSlot, QRect, QPoint
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QFont, QFontMetrics, QPixmap, QPainter, QColor, QPen, QBrush, QImage
 
-from src.camera_worker    import CameraWorker, DemoFrameWorker
-from src.camera_widget    import CameraWidget
-from src.detector         import DetectionWorker
-from src.stats_bar        import StatsBar
-from src.checklist_panel  import ChecklistGridPanel
-from src.settings_dialog  import SettingsDialog
-from src.config_manager   import ConfigManager
-from src.serial_reader    import SerialReader
-from src.vc_lookup        import VCLookupWorker
+from .camera_worker    import CameraWorker, DemoFrameWorker
+from .camera_widget    import CameraWidget
+from .detector         import DetectionWorker
+from .stats_bar        import StatsBar
+from .checklist_panel  import ChecklistGridPanel
+from .settings_dialog  import SettingsDialog
+from .config_manager   import ConfigManager
+from .serial_reader    import SerialReader
+from .vc_lookup        import VCLookupWorker
 
-from src.database         import Database
-from src.models           import VehicleModel, resolve_model
-from src.logger           import get_logger
+from .database         import Database
+from .models           import VehicleModel, resolve_model
+from .logger           import get_logger
 
 logger = get_logger("main_window")
 
@@ -51,16 +51,18 @@ _SLIDE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)),
 # binary scheme: RED = not detected yet, GREEN = confirmed detected.
 _MARKER_LABEL_BG = "rgba(0, 0, 0, 160)"
 _AUTO_FINALISE_DELAY_MS = 10000  # finalise after 10s of inactivity
+_SCREEN_SCALE = 1.0
 
 
 def _btn(text, color, slot, tip=""):
+    s = _SCREEN_SCALE
     b = QPushButton(text)
-    b.setFixedHeight(28)
+    b.setFixedHeight(max(24, int(28 * s)))
     b.setToolTip(tip)
     b.setStyleSheet(
         f"QPushButton{{background:{color}22;color:{color};"
         f"border:1px solid {color}55;border-radius:4px;"
-        f"padding:0 14px;font-size:10px;font-weight:bold;}}"
+        f"padding:0 {max(8, int(14 * s))}px;font-size:{max(9, int(10 * s))}px;font-weight:bold;}}"
         f"QPushButton:hover{{background:{color}44;}}"
     )
     b.clicked.connect(slot)
@@ -69,8 +71,9 @@ def _btn(text, color, slot, tip=""):
 
 def _vsep() -> QLabel:
     """Thin vertical divider used between dashboard control groups."""
+    s = _SCREEN_SCALE
     sep = QLabel("│")
-    sep.setStyleSheet("color:#2a2d3a; font-size:22px; background:transparent;")
+    sep.setStyleSheet(f"color:#2a2d3a; font-size:{max(16, int(22 * s))}px; background:transparent;")
     sep.setAlignment(Qt.AlignCenter)
     return sep
 
@@ -78,13 +81,15 @@ def _vsep() -> QLabel:
 class ToastPopup(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(36)
+        s = _SCREEN_SCALE
+        self.setFixedHeight(max(28, int(36 * s)))
         self.setStyleSheet("background:#0f1220; border:1px solid #00e67655; border-radius:6px;")
         self.setVisible(False)
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(10, 4, 10, 4)
+        lay.setContentsMargins(max(6, int(10 * s)), max(2, int(4 * s)), max(6, int(10 * s)), max(2, int(4 * s)))
         self._lbl = QLabel("")
-        self._lbl.setStyleSheet("color:#00e676; font-size:10px; font-weight:bold; font-family:Consolas;")
+        tfsz = max(9, int(10 * s))
+        self._lbl.setStyleSheet(f"color:#00e676; font-size:{tfsz}px; font-weight:bold; font-family:Consolas;")
         lay.addWidget(self._lbl)
         lay.addStretch()
         self._timer = QTimer(self)
@@ -113,17 +118,20 @@ class ToastPopup(QWidget):
 
 
 class TitleBar(QWidget):
+    _settings_clicked = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(76)
+        s = _SCREEN_SCALE
+        self.setFixedHeight(max(60, int(76 * s)))
         self.setStyleSheet(
             "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
             "stop:0 #080a12,stop:1 #0f1430);"
         )
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(14, 0, 14, 0)
+        m = max(8, int(14 * s))
+        lay.setContentsMargins(m, 0, m, 0)
 
-        # Tata Motors logo
         def _make_white_semi_transparent(px: QPixmap, tolerance: int = 30, alpha: int = 160) -> QPixmap:
             img = px.toImage().convertToFormat(QImage.Format_ARGB32)
             for y in range(img.height()):
@@ -136,38 +144,43 @@ class TitleBar(QWidget):
 
         logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                                   "assets", "TATA_MOTORS_LOGO.jpg")
+        logo_lw = max(160, int(240 * s))
+        logo_lh = max(44, int(68 * s))
         logo = QLabel()
-        logo.setFixedSize(240, 68)
+        logo.setFixedSize(logo_lw, logo_lh)
         logo.setStyleSheet("background:#000; border-radius:4px; padding:2px;")
         if os.path.exists(logo_path):
             px = QPixmap(logo_path)
             if not px.isNull():
                 px = _make_white_semi_transparent(px)
-                logo.setPixmap(px.scaled(240, 68, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                logo.setPixmap(px.scaled(logo_lw, logo_lh, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
         logo.setAlignment(Qt.AlignCenter)
         lay.addWidget(logo)
 
-        lay.addSpacing(16)
+        sp = max(10, int(16 * s))
+        lay.addSpacing(sp)
 
         ico = QLabel("◈")
-        ico.setStyleSheet("color:#00bcd4; font-size:22px;")
+        ico.setStyleSheet(f"color:#00bcd4; font-size:{max(16, int(22 * s))}px;")
         lay.addWidget(ico)
 
         ttl = QLabel("SMART QUALITY GATE INSPECTION")
+        tsz = max(13, int(17 * s))
         ttl.setStyleSheet(
-            "color:#dde2f0; font-size:17px; font-weight:bold; letter-spacing:3px;"
+            f"color:#dde2f0; font-size:{tsz}px; font-weight:bold; letter-spacing:3px;"
         )
         lay.addWidget(ttl)
         lay.addStretch()
 
         cfg = ConfigManager.instance().cfg
+        isz = max(9, int(11 * s))
         info = QLabel(f"LINE: {cfg.line_id}  |  STATION: {cfg.station_id}")
-        info.setStyleSheet("color:#667799; font-size:11px; font-family:Consolas; font-weight:bold;")
+        info.setStyleSheet(f"color:#667799; font-size:{isz}px; font-family:Consolas; font-weight:bold;")
         lay.addWidget(info)
-        lay.addSpacing(20)
+        lay.addSpacing(max(12, int(20 * s)))
 
         self._clk = QLabel()
-        self._clk.setStyleSheet("color:#8899aa; font-size:11px; font-family:Consolas; font-weight:bold;")
+        self._clk.setStyleSheet(f"color:#8899aa; font-size:{isz}px; font-family:Consolas; font-weight:bold;")
         lay.addWidget(self._clk)
 
         t = QTimer(self)
@@ -176,6 +189,19 @@ class TitleBar(QWidget):
         )
         t.start(1000)
         t.timeout.emit()
+
+        lay.addSpacing(max(12, int(20 * s)))
+
+        sb = max(26, int(32 * s))
+        self._settings_btn = QPushButton("⚙")
+        self._settings_btn.setFixedSize(sb, sb)
+        self._settings_btn.setToolTip("Open settings")
+        self._settings_btn.setStyleSheet(
+            f"QPushButton{{background:#1c2050;color:#8899ff;border:none;border-radius:6px;font-size:{max(12, int(16 * s))}px;}}"
+            f"QPushButton:hover{{background:#2a30a0;}}"
+        )
+        self._settings_btn.clicked.connect(self._settings_clicked.emit)
+        lay.addWidget(self._settings_btn)
 
 
 class ChassisPhotoWidget(QWidget):
@@ -336,26 +362,28 @@ class ChassisPhotoWidget(QWidget):
                 painter.drawLine(bcx - 1, bcy + 3, bcx + 4, bcy - 3)
 
         # Legend strip at bottom
-        ly = H - 28
-        painter.fillRect(0, ly, W, 28, QColor(10, 12, 22))
+        lh = max(22, int(28 * _SCREEN_SCALE))
+        ly = H - lh
+        lfsz = max(7, int(8 * _SCREEN_SCALE))
+        painter.fillRect(0, ly, W, lh, QColor(10, 12, 22))
         legend_items = [
             ("▭ NOT DETECTED", "#ff5252"),
             ("▣ DETECTED", "#00e676"),
         ]
-        lx_start = 10
+        lx_start = max(8, int(10 * _SCREEN_SCALE))
         for text, col in legend_items:
             painter.setPen(QColor(col))
-            painter.setFont(QFont("Consolas", 8, QFont.Bold))
-            painter.drawText(lx_start, ly + 18, text)
-            lx_start += painter.fontMetrics().horizontalAdvance(text) + 20
+            painter.setFont(QFont("Consolas", lfsz, QFont.Bold))
+            painter.drawText(lx_start, ly + lh - max(6, int(8 * _SCREEN_SCALE)), text)
+            lx_start += painter.fontMetrics().horizontalAdvance(text) + max(12, int(20 * _SCREEN_SCALE))
 
         total = len(self._statuses)
         done = sum(1 for s in self._statuses.values() if s == "OK")
         count_text = f"{done}/{total} detected"
         painter.setPen(QColor("#00bcd4"))
-        painter.setFont(QFont("Consolas", 8, QFont.Bold))
+        painter.setFont(QFont("Consolas", lfsz, QFont.Bold))
         cw = painter.fontMetrics().horizontalAdvance(count_text)
-        painter.drawText(W - cw - 12, ly + 18, count_text)
+        painter.drawText(W - cw - max(8, int(12 * _SCREEN_SCALE)), ly + lh - max(6, int(8 * _SCREEN_SCALE)), count_text)
 
 
 
@@ -366,6 +394,12 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Smart Quality Gate Inspection")
+
+        screen = QApplication.primaryScreen()
+        geo = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+        scr_w, scr_h = geo.width(), geo.height()
+        self._s = _SCREEN_SCALE = max(0.5, min(1.5, min(scr_w / 1920, scr_h / 1080)))
+
         self.showFullScreen()
 
         self._cfg        = ConfigManager.instance().cfg
@@ -382,6 +416,7 @@ class MainWindow(QMainWindow):
         self._current_model: VehicleModel | None = None
         self._current_veh_id  = 0
         self._scan_start      = 0.0
+        self._pending_vin     = None
 
         self._cam_workers: dict[int, object] = {}
         self._last_frames: dict[int, np.ndarray] = {}
@@ -409,18 +444,23 @@ class MainWindow(QMainWindow):
         self._start_cameras()
         self._serial_reader.start()
         self._enter_state(STATE_SCAN_VC)
+        self._apply_theme()
 
         logger.info("MainWindow ready")
 
     def _build_ui(self):
+        s = self._s
         root_w = QWidget()
         self.setCentralWidget(root_w)
         root = QVBoxLayout(root_w)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        root.addWidget(TitleBar())
-        root.addWidget(self._build_dashboard())
+        self._title_bar = TitleBar()
+        self._title_bar._settings_clicked.connect(self._open_settings)
+        root.addWidget(self._title_bar)
+        self._dash_bar = self._build_dashboard()
+        root.addWidget(self._dash_bar)
 
         self._h_split = QSplitter(Qt.Horizontal)
         self._h_split.setHandleWidth(3)
@@ -436,35 +476,37 @@ class MainWindow(QMainWindow):
         cam_box.setSpacing(4)
 
         tog = QWidget()
-        tog.setFixedHeight(32)
+        tog.setFixedHeight(max(28, int(32 * s)))
         tog.setStyleSheet("background:#0d0f18; border-radius:6px;")
         tog_lay = QHBoxLayout(tog)
-        tog_lay.setContentsMargins(6, 2, 6, 2)
+        tog_lay.setContentsMargins(max(4, int(6 * s)), 2, max(4, int(6 * s)), 2)
         tog_lay.setSpacing(4)
 
+        tfsz = max(8, int(10 * s))
+        tp = max(8, int(14 * s))
         self._btn_left = QPushButton("◀  LEFT VIEW")
-        self._btn_left.setFixedHeight(30)
+        self._btn_left.setFixedHeight(max(24, int(30 * s)))
         self._btn_left.setCheckable(True)
         self._btn_left.setChecked(True)
         self._btn_left.setStyleSheet(
-            "QPushButton{background:#00bcd433;color:#00bcd4;"
-            "border:2px solid #00bcd466;border-radius:6px;"
-            "font-size:10px;font-weight:bold;padding:0 14px;}"
-            "QPushButton:checked{background:#00bcd4;color:#ffffff;border:2px solid #00bcd4;}"
-            "QPushButton:hover{background:#00bcd444;}"
+            f"QPushButton{{background:#00bcd433;color:#00bcd4;"
+            f"border:2px solid #00bcd466;border-radius:6px;"
+            f"font-size:{tfsz}px;font-weight:bold;padding:0 {tp}px;}}"
+            f"QPushButton:checked{{background:#00bcd4;color:#ffffff;border:2px solid #00bcd4;}}"
+            f"QPushButton:hover{{background:#00bcd444;}}"
         )
         self._btn_left.clicked.connect(lambda: self._toggle_camera(1))
 
         self._btn_right = QPushButton("RIGHT VIEW  ▶")
-        self._btn_right.setFixedHeight(30)
+        self._btn_right.setFixedHeight(max(24, int(30 * s)))
         self._btn_right.setCheckable(True)
         self._btn_right.setChecked(False)
         self._btn_right.setStyleSheet(
-            "QPushButton{background:#aa88ff33;color:#aa88ff;"
-            "border:2px solid #aa88ff66;border-radius:6px;"
-            "font-size:10px;font-weight:bold;padding:0 14px;}"
-            "QPushButton:checked{background:#aa88ff;color:#ffffff;border:2px solid #aa88ff;}"
-            "QPushButton:hover{background:#aa88ff44;}"
+            f"QPushButton{{background:#aa88ff33;color:#aa88ff;"
+            f"border:2px solid #aa88ff66;border-radius:6px;"
+            f"font-size:{tfsz}px;font-weight:bold;padding:0 {tp}px;}}"
+            f"QPushButton:checked{{background:#aa88ff;color:#ffffff;border:2px solid #aa88ff;}}"
+            f"QPushButton:hover{{background:#aa88ff44;}}"
         )
         self._btn_right.clicked.connect(lambda: self._toggle_camera(2))
 
@@ -473,7 +515,7 @@ class MainWindow(QMainWindow):
         tog_lay.addStretch()
 
         zoom_hint = QLabel("ZOOM: Scroll on camera")
-        zoom_hint.setStyleSheet("color:#556677; font-size:8px;")
+        zoom_hint.setStyleSheet(f"color:#556677; font-size:{max(7, int(8 * s))}px;")
         tog_lay.addWidget(zoom_hint)
 
         cam_box.addWidget(tog)
@@ -489,10 +531,11 @@ class MainWindow(QMainWindow):
         #    obscures the image. Shows frame presence status during inspection.
         self._frame_status_label = QLabel("")
         self._frame_status_label.setAlignment(Qt.AlignCenter)
-        self._frame_status_label.setFixedHeight(24)
+        self._frame_status_label.setFixedHeight(max(20, int(24 * s)))
+        ffsz = max(8, int(9 * s))
         self._frame_status_label.setStyleSheet(
-            "color:#667799; background:#0a0c14; border-top:1px solid #1a1d28;"
-            "font-size:9px; font-weight:bold; letter-spacing:1px;"
+            f"color:#667799; background:#0a0c14; border-top:1px solid #1a1d28;"
+            f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1px;"
         )
         cam_box.addWidget(self._frame_status_label)
 
@@ -501,10 +544,11 @@ class MainWindow(QMainWindow):
         #    VIN/VC scan; hidden during active inspection.
         self._scan_banner = QLabel("▶  SCAN VC / ENTER VIN + VC NUMBER TO BEGIN")
         self._scan_banner.setAlignment(Qt.AlignCenter)
-        self._scan_banner.setFixedHeight(26)
+        self._scan_banner.setFixedHeight(max(22, int(26 * s)))
+        bfsz = max(9, int(10 * s))
         self._scan_banner.setStyleSheet(
-            "color:#aa88ff; background:#12001a; border-top:1px solid #aa88ff44;"
-            "font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+            f"color:#aa88ff; background:#12001a; border-top:1px solid #aa88ff44;"
+            f"font-size:{bfsz}px; font-weight:bold; letter-spacing:1.5px;"
         )
         cam_box.addWidget(self._scan_banner)
 
@@ -525,15 +569,20 @@ class MainWindow(QMainWindow):
         })
 
         self._h_split.addWidget(self._chassis_photo)
-        self._h_split.setSizes([300, 700])
+        screen = QApplication.primaryScreen()
+        scr_w = screen.availableGeometry().width() if screen else 1920
+        sw = self.width() or scr_w
+        cam_w = max(240, int(sw * 0.45))
+        ref_w = max(240, int(sw * 0.55))
+        self._h_split.setSizes([cam_w, ref_w])
 
         self._toast_popup = ToastPopup(self)
         self._toast_popup.setVisible(False)
 
         # Lower tier — full-width checklist grid panel, shown below both
         # the camera feed and the chassis reference image.
-        self._checklist = ChecklistGridPanel()
-        self._checklist.setMinimumHeight(140)
+        self._checklist = ChecklistGridPanel(scale=s)
+        self._checklist.setMinimumHeight(max(80, int(140 * s)))
 
         self._v_split = QSplitter(Qt.Vertical)
         self._v_split.setHandleWidth(3)
@@ -546,7 +595,6 @@ class MainWindow(QMainWindow):
         self._v_split.addWidget(self._checklist)
         self._v_split.setStretchFactor(0, 6)
         self._v_split.setStretchFactor(1, 1)
-        self._v_split.setSizes([840, 170])
 
         root.addWidget(self._v_split, stretch=1)
 
@@ -561,6 +609,15 @@ class MainWindow(QMainWindow):
         # toast-position calculation to the next event-loop tick so it isn't
         # computed against stale (0,0) coordinates.
         QTimer.singleShot(0, self._position_toast)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_F11:
+            if self.isFullScreen():
+                self.showMaximized()
+            else:
+                self.showFullScreen()
+        else:
+            super().keyPressEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -585,46 +642,45 @@ class MainWindow(QMainWindow):
     def _build_dashboard(self) -> QWidget:
         """
         Unified upper dashboard bar — sits directly below the title bar and
-        combines the scan controls (Settings / VIN / VC / Scan / Demo) with
+        combines the scan controls (VIN / VC / Scan / Demo) with
         the live KPI tiles + verdict badge in a single row, so an operator
         never has to look in two places.
         """
+        s = _SCREEN_SCALE
+        bh = max(60, int(76 * s))
         bar = QWidget()
-        bar.setFixedHeight(76)
+        bar.setFixedHeight(bh)
         bar.setStyleSheet(
             "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
             "stop:0 #0d0f18,stop:1 #11162a);"
             "border-bottom:1px solid #2a2d3a;"
         )
+        m = max(8, int(12 * s))
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(12, 6, 12, 6)
-        lay.setSpacing(10)
-
-        lay.addWidget(
-            _btn("⚙  SETTINGS", "#8899ff", self._open_settings,
-                 "Camera & detection settings"),
-            alignment=Qt.AlignVCenter,
-        )
-
-        lay.addWidget(_vsep())
+        lay.setContentsMargins(m, max(4, int(6 * s)), m, max(4, int(6 * s)))
+        lay.setSpacing(max(6, int(10 * s)))
 
         # --- VIN input (labelled block) ---
         vin_block = QVBoxLayout()
         vin_block.setSpacing(2)
         vin_lbl = QLabel("VIN NUMBER")
+        vfsz = max(7, int(8 * s))
         vin_lbl.setStyleSheet(
-            "color:#ffd740; font-size:8px; font-weight:bold; letter-spacing:1px;"
+            f"color:#ffd740; font-size:{vfsz}px; font-weight:bold; letter-spacing:1px;"
         )
         vin_block.addWidget(vin_lbl)
+        iw = max(140, int(200 * s))
+        ih = max(26, int(32 * s))
+        ifs = max(11, int(13 * s))
         self._vin_input = QLineEdit()
         self._vin_input.setPlaceholderText("17-digit VIN (MAT…)")
-        self._vin_input.setFixedWidth(200)
-        self._vin_input.setFixedHeight(32)
+        self._vin_input.setFixedWidth(iw)
+        self._vin_input.setFixedHeight(ih)
         self._vin_input.setMaxLength(17)
         self._vin_input.setStyleSheet(
-            "QLineEdit{background:#0f1120;color:#ffd740;border:2px solid #ffd74055;"
-            "border-radius:6px;font-size:13px;font-weight:bold;font-family:Consolas;padding:2px 10px;}"
-            "QLineEdit:focus{border:2px solid #ffd740;background:#151830;}"
+            f"QLineEdit{{background:#0f1120;color:#ffd740;border:2px solid #ffd74055;"
+            f"border-radius:6px;font-size:{ifs}px;font-weight:bold;font-family:Consolas;padding:2px 10px;}}"
+            f"QLineEdit:focus{{border:2px solid #ffd740;background:#151830;}}"
         )
         self._vin_input.returnPressed.connect(self._submit_scan)
         self._vin_input.textChanged.connect(self._on_vin_changed)
@@ -636,32 +692,34 @@ class MainWindow(QMainWindow):
         vc_block.setSpacing(2)
         vc_lbl = QLabel("VC NUMBER")
         vc_lbl.setStyleSheet(
-            "color:#00bcd4; font-size:8px; font-weight:bold; letter-spacing:1px;"
+            f"color:#00bcd4; font-size:{vfsz}px; font-weight:bold; letter-spacing:1px;"
         )
         vc_block.addWidget(vc_lbl)
         self._vc_input = QLineEdit()
         self._vc_input.setPlaceholderText("12-digit VC…")
-        self._vc_input.setFixedWidth(190)
-        self._vc_input.setFixedHeight(32)
+        self._vc_input.setFixedWidth(max(130, int(190 * s)))
+        self._vc_input.setFixedHeight(ih)
         self._vc_input.setMaxLength(12)
         self._vc_input.setStyleSheet(
-            "QLineEdit{background:#0f1120;color:#00bcd4;border:2px solid #00bcd455;"
-            "border-radius:6px;font-size:13px;font-weight:bold;font-family:Consolas;padding:2px 10px;}"
-            "QLineEdit:focus{border:2px solid #00bcd4;background:#151830;}"
+            f"QLineEdit{{background:#0f1120;color:#00bcd4;border:2px solid #00bcd455;"
+            f"border-radius:6px;font-size:{ifs}px;font-weight:bold;font-family:Consolas;padding:2px 10px;}}"
+            f"QLineEdit:focus{{border:2px solid #00bcd4;background:#151830;}}"
         )
         self._vc_input.returnPressed.connect(self._submit_scan)
         self._vc_input.textChanged.connect(self._on_vc_changed)
         vc_block.addWidget(self._vc_input)
         lay.addLayout(vc_block)
 
+        sw = max(60, int(80 * s))
         self._scan_btn = QPushButton("▶ SCAN")
-        self._scan_btn.setFixedSize(80, 32)
+        self._scan_btn.setFixedSize(sw, ih)
+        sfsz = max(9, int(11 * s))
         self._scan_btn.setStyleSheet(
-            "QPushButton{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-            "stop:0 #00bcd433,stop:1 #0088aa33);color:#00bcd4;"
-            "border:2px solid #00bcd466;border-radius:6px;"
-            "font-size:11px;font-weight:bold;}"
-            "QPushButton:hover{background:#00bcd466;border:2px solid #00bcd4;}"
+            f"QPushButton{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 #00bcd433,stop:1 #0088aa33);color:#00bcd4;"
+            f"border:2px solid #00bcd466;border-radius:6px;"
+            f"font-size:{sfsz}px;font-weight:bold;}}"
+            f"QPushButton:hover{{background:#00bcd466;border:2px solid #00bcd4;}}"
         )
         self._scan_btn.setToolTip("Submit VIN / VC (or press Enter)")
         self._scan_btn.clicked.connect(self._submit_scan)
@@ -676,7 +734,7 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
 
         # KPI tiles + verdict badge (same widget as before, now embedded here)
-        self.stats_bar = StatsBar()
+        self.stats_bar = StatsBar(scale=s)
         lay.addWidget(self.stats_bar, alignment=Qt.AlignVCenter)
 
         self._submit_timer = QTimer(self)
@@ -692,9 +750,10 @@ class MainWindow(QMainWindow):
         if state == STATE_SCAN_VC:
             self._clear_inputs()
             self._frame_status_label.setText("")
+            ffsz = max(8, int(9 * _SCREEN_SCALE))
             self._frame_status_label.setStyleSheet(
-                "color:#667799; background:#0a0c14; border-top:1px solid #1a1d28;"
-                "font-size:9px; font-weight:bold; letter-spacing:1px;"
+                f"color:#667799; background:#0a0c14; border-top:1px solid #1a1d28;"
+                f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1px;"
             )
             self.stats_bar.clear_scan_info()
             self.stats_bar.on_verdict("SCAN_VC")
@@ -738,16 +797,17 @@ class MainWindow(QMainWindow):
         if not self._scan_banner.isVisible():
             return
         self._banner_bright = not self._banner_bright
+        bfsz = max(9, int(10 * _SCREEN_SCALE))
         if self._banner_bright:
             self._scan_banner.setStyleSheet(
-                "color:#aa88ff; background:#12001a; border-top:1px solid #aa88ff44;"
-                "font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+                f"color:#aa88ff; background:#12001a; border-top:1px solid #aa88ff44;"
+                f"font-size:{bfsz}px; font-weight:bold; letter-spacing:1.5px;"
             )
             self._banner_timer.start(1100)
         else:
             self._scan_banner.setStyleSheet(
-                "color:#aa88ff33; background:#0a0c14; border-top:1px solid #aa88ff22;"
-                "font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+                f"color:#aa88ff33; background:#0a0c14; border-top:1px solid #aa88ff22;"
+                f"font-size:{bfsz}px; font-weight:bold; letter-spacing:1.5px;"
             )
             self._banner_timer.start(900)
 
@@ -756,9 +816,10 @@ class MainWindow(QMainWindow):
         self._scan_banner.setVisible(visible)
         if visible:
             self._banner_bright = True
+            bfsz = max(9, int(10 * _SCREEN_SCALE))
             self._scan_banner.setStyleSheet(
-                "color:#aa88ff; background:#12001a; border-top:1px solid #aa88ff44;"
-                "font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+                f"color:#aa88ff; background:#12001a; border-top:1px solid #aa88ff44;"
+                f"font-size:{bfsz}px; font-weight:bold; letter-spacing:1.5px;"
             )
             self._banner_timer.start(1100)
         else:
@@ -958,17 +1019,18 @@ class MainWindow(QMainWindow):
     def _on_frame_presence(self, present: bool):
         self._frame_in_view = present
         if self._state == STATE_INSPECT:
+            ffsz = max(9, int(10 * _SCREEN_SCALE))
             if present:
                 self._frame_status_label.setText("●  FRAME IN VIEW")
                 self._frame_status_label.setStyleSheet(
-                    "color:#00e676; background:#001a0a; border-top:1px solid #00e67644;"
-                    "font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+                    f"color:#00e676; background:#001a0a; border-top:1px solid #00e67644;"
+                    f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1.5px;"
                 )
             else:
                 self._frame_status_label.setText("●  WAITING FOR FRAME")
                 self._frame_status_label.setStyleSheet(
-                    "color:#ffc107; background:#1a0f00; border-top:1px solid #ffc10744;"
-                    "font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+                    f"color:#ffc107; background:#1a0f00; border-top:1px solid #ffc10744;"
+                    f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1.5px;"
                 )
             self.statusBar().showMessage(
                 "Frame in view — scanning…" if present
@@ -1017,11 +1079,8 @@ class MainWindow(QMainWindow):
         self._show_toast(f"Viewing: {lbl}", 1500)
 
     def _start_cameras(self):
-        workers = list(self._cam_workers.values())
-        for w in workers:
+        for w in list(self._cam_workers.values()):
             w.stop()
-        for w in workers:
-            w.wait(1000)
         self._cam_workers.clear()
         for cam_id in (1, 2):
             self._launch_camera(cam_id)
@@ -1064,6 +1123,57 @@ class MainWindow(QMainWindow):
             self._det_worker.reload_detector()
             # Reload chassis overlay config
             self._chassis_photo._load_config()
+            self._apply_theme()
+
+    def _apply_theme(self):
+        cfg = ConfigManager.instance().cfg
+        app = QApplication.instance()
+        qss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                "assets", f"style_{cfg.theme}.qss")
+        if not os.path.exists(qss_path):
+            qss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                    "assets", "style.qss")
+        try:
+            with open(qss_path, encoding="utf-8") as f:
+                app.setStyleSheet(f.read())
+        except Exception as e:
+            logger.warning(f"Failed to load theme QSS ({qss_path}): {e}")
+
+        is_dark = cfg.theme == "dark"
+        if hasattr(self, '_title_bar'):
+            self._title_bar.setStyleSheet(
+                "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                "stop:0 #080a12,stop:1 #0f1430);"
+                if is_dark else
+                "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                "stop:0 #e8ecf4,stop:1 #d0d8e8);"
+            )
+            self._title_bar._settings_btn.setStyleSheet(
+                "QPushButton{background:#1c2050;color:#8899ff;border:none;border-radius:6px;font-size:16px;}"
+                "QPushButton:hover{background:#2a30a0;}"
+            )
+
+        # Update dashboard bar style
+        if hasattr(self, '_dash_bar'):
+            self._dash_bar.setStyleSheet(
+                "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                "stop:0 #0d0f18,stop:1 #11162a);"
+                "border-bottom:1px solid #2a2d3a;"
+                if is_dark else
+                "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                "stop:0 #f0f2f8,stop:1 #e4e8f0);"
+                "border-bottom:1px solid #c0c4d0;"
+            )
+
+        # Update splitter styles
+        splitter_color = "#2a2d3a" if is_dark else "#c0c4d0"
+        splitter_hover = "#00bcd4" if is_dark else "#0097a7"
+        splitter_qss = (
+            f"QSplitter::handle{{background:{splitter_color};}}"
+            f"QSplitter::handle:hover{{background:{splitter_hover};}}"
+        )
+        for splitter in self.findChildren(QSplitter):
+            splitter.setStyleSheet(splitter_qss)
 
     @pyqtSlot()
     def _demo_auto_detect(self):
@@ -1100,12 +1210,23 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._finalise_timer.stop()
+        self._banner_timer.stop()
+        self._demo_detect_timer.stop()
+        self._submit_timer.stop()
+
         self._db.end_session(self._session_id)
+
+        for w in self._cam_workers.values():
+            if hasattr(w, '_cap') and w._cap is not None:
+                try: w._cap.release()
+                except: pass
+            w.stop()
+
         self._det_worker.stop()
         self._serial_reader.stop()
-        for w in self._cam_workers.values():
-            w.stop()
+
         ConfigManager.instance().save()
+        self._db.close()
         event.accept()
 
 
