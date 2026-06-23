@@ -202,12 +202,12 @@ class VCScanWidget(QWidget):
     def _submit(self):
         vin = self._vin_input.text().strip().upper()
         vc  = self._input.text().strip().upper()
-        if len(vc) < 4:
-            self._err.setText("⚠  Please enter a valid VC number (min 4 characters)")
+        if len(vc) != 12:
+            self._err.setText("⚠  VC number must be exactly 12 characters")
             self._input.setFocus()
             return
-        if len(vin) < 4:
-            self._err.setText("⚠  Please enter a valid VIN number (min 4 characters)")
+        if len(vin) != 17:
+            self._err.setText("⚠  VIN must be exactly 17 characters")
             self._vin_input.setFocus()
             return
         model = resolve_model(vc)
