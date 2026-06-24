@@ -51,7 +51,7 @@ _ROW_BG_NA      = "#1a1400"
 _ROW_BG_IDLE    = "#0d0f14"
 _TEXT_PRIMARY   = "#dde2f0"
 _TEXT_DIM       = "#7c8aa3"
-_TEXT_IDLE      = "#3d4152"
+_TEXT_IDLE      = "#586878"
 
 _MIN_ROW_WIDTH  = 300
 _ROW_HEIGHT     = 48
@@ -215,7 +215,7 @@ class ChecklistRow(QFrame):
             f"ChecklistRow{{background:{bg}; border:1px solid {border}; "
             "border-radius:6px;}"
         )
-        name_color = _TEXT_IDLE if not self._active else _TEXT_PRIMARY
+        name_color = _TEXT_DIM if not self._active else _TEXT_PRIMARY
         self._name_lbl.setStyleSheet(
             f"color:{name_color}; font-size:{max(9, int(11 * self._scale))}px; "
             "font-weight:600; background:transparent;"
@@ -349,7 +349,7 @@ class ChecklistGridPanel(QWidget):
         self._active = active
         if not active:
             self._model_lbl.setStyleSheet(
-                f"color:{_TEXT_IDLE}; font-size:{max(9, int(10 * self._scale))}px; "
+                f"color:{_TEXT_DIM}; font-size:{max(9, int(10 * self._scale))}px; "
                 "background:transparent;"
             )
             self._model_lbl.setText("— awaiting VIN/VC —")
@@ -370,7 +370,7 @@ class ChecklistGridPanel(QWidget):
 
         self._model_lbl.setText("— awaiting VIN/VC —")
         self._model_lbl.setStyleSheet(
-            f"color:{_TEXT_IDLE}; font-size:{max(9, int(10 * self._scale))}px; "
+            f"color:{_TEXT_DIM}; font-size:{max(9, int(10 * self._scale))}px; "
             "background:transparent;"
         )
 
@@ -425,7 +425,7 @@ class ChecklistGridPanel(QWidget):
         self._clear_grid()
         self._model_lbl.setText("— awaiting VIN/VC —")
         self._model_lbl.setStyleSheet(
-            f"color:{_TEXT_IDLE}; font-size:{max(9, int(10 * self._scale))}px; "
+            f"color:{_TEXT_DIM}; font-size:{max(9, int(10 * self._scale))}px; "
             "background:transparent;"
         )
         self._idle_lbl.setVisible(True)

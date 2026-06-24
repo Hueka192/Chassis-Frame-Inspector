@@ -64,6 +64,7 @@ class DetectionResult:
     matched_checkpoints: List[int] = field(default_factory=list)
     annotated_frame: Optional[np.ndarray] = None
     inference_ms: float = 0.0
+    hits: Dict[int, int] = field(default_factory=dict)  # cp_id → hit count for live tracking
 
 
 # ── Colour signatures (HSV) ───────────────────────────────────────────────────
@@ -252,6 +253,8 @@ class RuleBasedDetector:
 
         result.boxes = _nms(all_boxes)
         result.matched_checkpoints = sorted(confirmed_this_call)
+        result.hits = {cp_id: count for cp_id, count in self._hit_buf.items()
+                       if cp_id not in self._confirmed and count > 0}
         result.annotated_frame = _annotate(frame.copy(), result.boxes, present)
         result.inference_ms = (time.perf_counter() - t0) * 1000
         return result
@@ -323,9 +326,10 @@ class DetectionWorker(QThread):
     Background thread — receives frames via enqueue(), emits results.
     Supports per-camera YOLO models via CameraConfig.model_path.
     """
-    result_ready   = pyqtSignal(object)    # DetectionResult
-    checkpoint_hit = pyqtSignal(int, int)  # (cam_id, cp_id)
-    frame_presence = pyqtSignal(bool)      # True = frame in view
+    result_ready    = pyqtSignal(object)    # DetectionResult
+    checkpoint_hit  = pyqtSignal(int, int)  # (cam_id, cp_id)
+    frame_presence  = pyqtSignal(bool)      # True = frame in view
+    tracking_update = pyqtSignal(int, set)  # (cam_id, set_of_cp_ids_with_positive_hits)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -335,6 +339,7 @@ class DetectionWorker(QThread):
         self._skip_ctr: Dict[int, int] = {}
         self._detectors: Dict[int, object] = {}
         self._last_presence = None
+        self._last_tracking: Dict[int, set] = {}  # cam_id → set of in-progress cp_ids
         self._paused = False
 
     def _get_detector(self, cam_id: int):
@@ -376,6 +381,7 @@ class DetectionWorker(QThread):
     def reset_presence(self):
         """Force frame_presence signal on next frame regardless of previous state."""
         self._last_presence = None
+        self._last_tracking.clear()
 
     def pause_detection(self, paused: bool):
         """Pause/resume emitting checkpoint hits (keep frame presence detection)."""
@@ -404,6 +410,14 @@ class DetectionWorker(QThread):
                 if result.frame_present != self._last_presence:
                     self._last_presence = result.frame_present
                     self.frame_presence.emit(result.frame_present)
+
+                # Emit live tracking updates (only on change to avoid flicker)
+                if not self._paused:
+                    tracking_set = set(result.hits.keys())
+                    prev = self._last_tracking.get(cam_id, set())
+                    if tracking_set != prev:
+                        self._last_tracking[cam_id] = tracking_set
+                        self.tracking_update.emit(cam_id, tracking_set)
 
                 # Emit confirmed checkpoints (only when not paused)
                 if not self._paused:

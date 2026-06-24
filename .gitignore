@@ -11,3 +11,4 @@ logs/*.db-shm
 logs/*.db-wal
 logs/ng_frames/
 config/settings_local.yaml
+assets/*.mp4

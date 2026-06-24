@@ -402,8 +402,13 @@ class ChassisPhotoWidget(QWidget):
             rh = max(12, int(img_h * bh_n))
             rx, ry = mx - rw // 2, my - rh // 2
 
-            is_detected = self._statuses.get(item_id, "PENDING") == "OK"
-            color = QColor("#00e676") if is_detected else QColor("#ff5252")
+            status = self._statuses.get(item_id, "PENDING")
+            if status == "OK":
+                color = QColor("#00e676")
+            elif status == "DETECTING":
+                color = QColor("#ffb300")
+            else:
+                color = QColor("#ff5252")
 
             fill = QColor(color)
             fill.setAlpha(30)
@@ -449,7 +454,6 @@ class MainWindow(QMainWindow):
         self.showFullScreen()
 
         self._cfg          = ConfigManager.instance().cfg
-        self._cfg.demo_mode = "off"  # always start in RTSP mode
         self._state        = STATE_SCAN_VC
 
         self._db = Database.instance()
@@ -814,11 +818,26 @@ class MainWindow(QMainWindow):
 
         elif state == STATE_INSPECT:
             self._show_scan_banner(False)
-            self._frame_status_label.setText("●  SCANNING")
-            self.statusBar().showMessage("Inspecting — checkpoints being detected")
             self._det_worker.pause_detection(False)
             self._det_worker.reset_detector()
             self._det_worker.reset_presence()
+
+            ffsz = max(9, int(10 * _SCREEN_SCALE))
+            if self._demo_mode == "off":
+                # RTSP mode: VIN scan guarantees frames are available
+                self._frame_in_view = True
+                self._frame_status_label.setText("●  FRAME IN VIEW")
+                self._frame_status_label.setStyleSheet(
+                    f"color:#00e676; background:#001a0a; border-top:1px solid #00e67644;"
+                    f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1.5px;"
+                )
+            else:
+                self._frame_status_label.setText("●  SCANNING")
+                self._frame_status_label.setStyleSheet(
+                    f"color:#ffc107; background:#1a0f00; border-top:1px solid #ffc10744;"
+                    f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1.5px;"
+                )
+            self.statusBar().showMessage("Inspecting — checkpoints being detected")
 
             if self._current_model:
                 names = {it.id: it.name for it in self._current_model.checklist}
@@ -875,6 +894,7 @@ class MainWindow(QMainWindow):
         self._det_worker.result_ready.connect(self._on_det_result)
         self._det_worker.frame_presence.connect(self._on_frame_presence)
         self._det_worker.checkpoint_hit.connect(self._on_checkpoint_hit)
+        self._det_worker.tracking_update.connect(self._on_tracking_update)
 
     def _on_vin_changed(self, text: str):
         txt = text.strip()
@@ -947,18 +967,26 @@ class MainWindow(QMainWindow):
         self.stats_bar.on_verdict("NA")
 
         self.statusBar().showMessage(
-            f"VC {vc} not applicable for this model — marked NA"
+            f"VC {vc} not applicable — {model.name} (NA)"
         )
-        self._show_toast(f"✖ VC {vc} not applicable for this model", 4000)
+        self._show_toast(f"✖ VC {vc} not applicable — {model.name}", 4000)
 
         # Log and reset
-        logger.info(f"VC={vc} not in valid list → NA")
+        logger.info(f"VC={vc} not in valid list → NA (model={model.name})")
         self._current_vin     = ""
         self._current_vc      = ""
         self._current_model   = None
         self._current_veh_id  = 0
         self._frame_in_view   = False
         self._enter_state(STATE_SCAN_VC)
+
+        # Show NA info in frame status area (after enter_state clears it)
+        ffsz = max(9, int(10 * _SCREEN_SCALE))
+        self._frame_status_label.setText(f"●  NA MODEL — {model.name}")
+        self._frame_status_label.setStyleSheet(
+            f"color:#ffb300; background:#1a1400; border-top:1px solid #ffb30044;"
+            f"font-size:{ffsz}px; font-weight:bold; letter-spacing:1.5px;"
+        )
 
     def _on_vc_accepted(self, vin: str, vc: str, model: VehicleModel):
         try:
@@ -1120,7 +1148,10 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(int, int)
     def _on_checkpoint_hit(self, cam_id: int, cp_id: int):
-        if self._state != STATE_INSPECT or not self._frame_in_view:
+        if self._state != STATE_INSPECT:
+            return
+        # In RTSP production mode, VIN scan guarantees frames are available
+        if self._demo_mode != "off" and not self._frame_in_view:
             return
 
         # Only accept hits from the checkpoint's assigned camera
@@ -1146,6 +1177,23 @@ class MainWindow(QMainWindow):
 
         # Reset inactivity timer on each detection
         self._finalise_timer.start(_AUTO_FINALISE_DELAY_MS)
+
+    @pyqtSlot(int, set)
+    def _on_tracking_update(self, cam_id: int, tracking_set: set):
+        """Update chassis photo with live tracking states (amber for in-progress)."""
+        if self._state != STATE_INSPECT:
+            return
+        statuses = self._chassis_photo.get_statuses()
+        # Reset all tracked items back to PENDING if not in tracking set
+        for item_id, curr in statuses.items():
+            if curr == "DETECTING" and item_id not in tracking_set:
+                self._chassis_photo.update_status(item_id, "PENDING")
+        # Mark new tracking items as DETECTING
+        for cp_id_num in tracking_set:
+            item_id = f"CL-{cp_id_num:02d}"
+            curr = statuses.get(item_id)
+            if curr is not None and curr != "OK":
+                self._chassis_photo.update_status(item_id, "DETECTING")
 
     @pyqtSlot(object)
     def _on_det_result(self, result):

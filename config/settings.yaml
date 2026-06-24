@@ -94,7 +94,7 @@ database:
   user: postgres
   vc_column: VC_no
   vin_column: VIN_no
-demo_mode: simulation
+demo_mode: recorded
 detection:
   confidence_threshold: 0.45
   frame_skip: 3
