@@ -222,11 +222,14 @@ class CameraWorker(QThread):
 #  Video-file worker (loops a local mp4 for recorded feeds)          #
 # ------------------------------------------------------------------ #
 class VideoFileWorker(QThread):
-    """Reads frames from a local video file and loops it forever."""
+    """Reads frames from a local video file and loops it forever.
+    Frame rate is throttled to prevent flooding the pipeline and crashing."""
 
     frame_ready   = pyqtSignal(int, np.ndarray)
     status_change = pyqtSignal(int, str, bool)
     error         = pyqtSignal(int, str)
+
+    _TARGET_FPS = 15
 
     def __init__(self, cam_id: int, path: str, cfg=None, parent=None):
         super().__init__(parent)
@@ -256,24 +259,38 @@ class VideoFileWorker(QThread):
     def run(self):
         self.status_change.emit(self.cam_id, f"Playing {os.path.basename(self.path)}", True)
         while not self._stop:
-            cap = cv2.VideoCapture(self.path)
-            if not cap.isOpened():
-                self.error.emit(self.cam_id, f"Cannot open {self.path}")
-                self.status_change.emit(self.cam_id, "File error", False)
-                return
-            t0 = time.time()
-            frame_idx = 0
-            while not self._stop:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                self._frame_count += 1
-                frame_idx += 1
-                if frame_idx % 30 == 0:
-                    elapsed = time.time() - t0
-                    self.fps_actual = frame_idx / elapsed if elapsed > 0 else 0
-                self.frame_ready.emit(self.cam_id, self._apply_zoom(frame))
-            cap.release()
+            cap = None
+            try:
+                cap = cv2.VideoCapture(self.path)
+                if not cap.isOpened():
+                    self.error.emit(self.cam_id, f"Cannot open {self.path}")
+                    self.status_change.emit(self.cam_id, "File error", False)
+                    return
+                t0 = time.time()
+                frame_idx = 0
+                while not self._stop:
+                    t_frame = time.time()
+                    ret, frame = cap.read()
+                    if not ret or frame is None:
+                        break
+                    self._frame_count += 1
+                    frame_idx += 1
+                    if frame_idx % 30 == 0:
+                        elapsed = time.time() - t0
+                        self.fps_actual = frame_idx / elapsed if elapsed > 0 else 0
+                    self.frame_ready.emit(self.cam_id, self._apply_zoom(frame))
+                    # Throttle to target FPS to prevent flooding the pipeline
+                    elapsed_frame = time.time() - t_frame
+                    sleep_needed = (1.0 / self._TARGET_FPS) - elapsed_frame
+                    if sleep_needed > 0:
+                        time.sleep(sleep_needed)
+            except Exception as e:
+                logger.error(f"[VIDEO{self.cam_id}] Error: {e}")
+                traceback.print_exc()
+            finally:
+                if cap is not None:
+                    try: cap.release()
+                    except: pass
         self.status_change.emit(self.cam_id, "Stopped", False)
 
 # ------------------------------------------------------------------ #

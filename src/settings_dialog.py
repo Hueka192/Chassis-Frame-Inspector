@@ -654,10 +654,10 @@ class SettingsDialog(QDialog):
         form.setContentsMargins(16, 16, 16, 16)
         d = self._cfg.detection
 
-        self.d_conf  = _spin(d.confidence_threshold, 0.1, 1.0)
         self.d_nms   = _spin(d.nms_threshold, 0.1, 1.0)
         self.d_skip  = _ispin(d.frame_skip, 1, 10)
         self.d_model = _line(d.model_path)
+        self.d_auto_zoom = _check(d.auto_zoom, "Auto-zoom camera on detected part")
 
         browse = QPushButton("Browse…")
         browse.setStyleSheet("background:#1c2050; color:#8899ff; border:none; border-radius:4px; padding:4px 10px;")
@@ -667,14 +667,75 @@ class SettingsDialog(QDialog):
         model_row.addWidget(self.d_model)
         model_row.addWidget(browse)
 
-        form.addRow(QLabel("Confidence Threshold:", styleSheet=FORM_LBL), self.d_conf)
+        # ── Confidence threshold with +/- buttons ──
+        conf_row = QHBoxLayout()
+        self.d_conf = _spin(d.confidence_threshold, 0.01, 1.0, 0.01)
+        self.d_conf.setFixedWidth(100)
+        conf_dec_btn = QPushButton("−")
+        conf_dec_btn.setFixedSize(32, 28)
+        conf_dec_btn.setStyleSheet(
+            "QPushButton{background:#2a0d0d; color:#ff5252; border:none; border-radius:4px; font-size:14px; font-weight:bold;}"
+            "QPushButton:hover{background:#4a1a1a;}"
+            "QPushButton:pressed{background:#6a2020;}"
+        )
+        conf_inc_btn = QPushButton("+")
+        conf_inc_btn.setFixedSize(32, 28)
+        conf_inc_btn.setStyleSheet(
+            "QPushButton{background:#0d3320; color:#00e676; border:none; border-radius:4px; font-size:14px; font-weight:bold;}"
+            "QPushButton:hover{background:#1a4a30;}"
+            "QPushButton:pressed{background:#206040;}"
+        )
+        conf_dec_btn.clicked.connect(lambda: self._adjust_confidence(-0.05))
+        conf_inc_btn.clicked.connect(lambda: self._adjust_confidence(0.05))
+
+        self._conf_val_lbl = QLabel(f"{d.confidence_threshold:.2f}")
+        self._conf_val_lbl.setFixedWidth(48)
+        self._conf_val_lbl.setStyleSheet(
+            "color:#00bcd4; font-size:13px; font-weight:bold; font-family:Consolas;"
+            "background:#0d0f18; border:1px solid #2a2d3a; border-radius:4px; padding:2px 6px;"
+        )
+        self._conf_val_lbl.setAlignment(Qt.AlignCenter)
+        conf_row.addWidget(conf_dec_btn)
+        conf_row.addWidget(self._conf_val_lbl)
+        conf_row.addWidget(conf_inc_btn)
+        conf_row.addStretch()
+
+        self.d_conf.valueChanged.connect(lambda v: self._conf_val_lbl.setText(f"{v:.2f}"))
+
+        # Quick-preset buttons
+        presets = QHBoxLayout()
+        presets.setSpacing(4)
+        for label, val in [("LOW (0.25)", 0.25), ("MED (0.45)", 0.45), ("HIGH (0.70)", 0.70), ("MAX (0.90)", 0.90)]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(24)
+            btn.setStyleSheet(
+                "QPushButton{background:#141828; color:#8899aa; border:1px solid #2a2d3a; border-radius:4px; font-size:8px; font-weight:bold; padding:0 8px;}"
+                "QPushButton:hover{background:#1c2050; color:#8899ff;}"
+            )
+            btn.clicked.connect(lambda _, v=val: self._set_confidence(v))
+            presets.addWidget(btn)
+        presets.addStretch()
+
+        conf_top = QVBoxLayout()
+        conf_top.addLayout(conf_row)
+        conf_top.addLayout(presets)
+
+        form.addRow(QLabel("Confidence Threshold:", styleSheet=FORM_LBL), conf_top)
         form.addRow(QLabel("NMS Threshold:", styleSheet=FORM_LBL),        self.d_nms)
         form.addRow(QLabel("Frame Skip (1=every):", styleSheet=FORM_LBL), self.d_skip)
         form.addRow(QLabel("YOLO Model (.pt):", styleSheet=FORM_LBL),     model_row)
         form.addRow(QLabel("", styleSheet=FORM_LBL),
                     QLabel("Leave model path empty to use built-in rule-based detector.",
                            styleSheet="color:#667788; font-size:9px;"))
+        form.addRow("", self.d_auto_zoom)
         return w
+
+    def _adjust_confidence(self, delta: float):
+        new_val = round(min(1.0, max(0.01, self.d_conf.value() + delta)), 2)
+        self.d_conf.setValue(new_val)
+
+    def _set_confidence(self, val: float):
+        self.d_conf.setValue(val)
 
     def _serial_db_tab(self) -> QWidget:
         w = QWidget()
@@ -742,6 +803,34 @@ class SettingsDialog(QDialog):
         row.addStretch()
         form.addRow("", row)
 
+        form.addRow(QLabel("", styleSheet=FORM_LBL), QLabel("", styleSheet=FORM_LBL))
+        form.addRow(QLabel("APPLICABLE VC NUMBERS", styleSheet="color:#00bcd4; font-size:10px; font-weight:bold;"))
+
+        vc_list_row = QHBoxLayout()
+        self._vc_list = QListWidget()
+        self._vc_list.setStyleSheet(
+            "QListWidget{background:#0d0f18; border:1px solid #2a2d3a; "
+            "border-radius:4px; color:#dde2f0; font-size:9px;}"
+            "QListWidget::item{ padding:4px 6px; }"
+            "QListWidget::item:selected{ background:#1c2050; }"
+        )
+        vc_list_row.addWidget(self._vc_list, stretch=1)
+
+        vc_btn_col = QVBoxLayout()
+        vc_add_btn = QPushButton("+ Add")
+        vc_add_btn.setStyleSheet("background:#0d3320; color:#00e676; border:none; border-radius:3px; padding:6px 10px;")
+        vc_add_btn.clicked.connect(self._add_vc_number)
+        vc_del_btn = QPushButton("✘ Delete")
+        vc_del_btn.setStyleSheet("background:#2a0d0d; color:#ff5252; border:none; border-radius:3px; padding:6px 10px;")
+        vc_del_btn.clicked.connect(self._delete_vc_number)
+        vc_btn_col.addWidget(vc_add_btn)
+        vc_btn_col.addWidget(vc_del_btn)
+        vc_btn_col.addStretch()
+        vc_list_row.addLayout(vc_btn_col)
+        form.addRow(vc_list_row)
+
+        self._refresh_vc_list()
+
         return w
 
     def _test_db_connection(self):
@@ -764,6 +853,33 @@ class SettingsDialog(QDialog):
         except Exception as e:
             self._db_test_lbl.setText(f"✘ {e}")
             self._db_test_lbl.setStyleSheet("color:#ff5252;")
+
+    def _refresh_vc_list(self):
+        self._vc_list.clear()
+        for vc in sorted(self._cfg.valid_vc_numbers):
+            QListWidgetItem(vc, self._vc_list)
+
+    def _add_vc_number(self):
+        vc, ok = QInputDialog.getText(
+            self, "Add VC Number",
+            "Enter applicable VC number:"
+        )
+        if ok and vc.strip():
+            vc = vc.strip().upper()
+            if vc in self._cfg.valid_vc_numbers:
+                QMessageBox.warning(self, "Duplicate", f"VC {vc} already exists.")
+                return
+            self._cfg.valid_vc_numbers.append(vc)
+            self._refresh_vc_list()
+
+    def _delete_vc_number(self):
+        item = self._vc_list.currentItem()
+        if not item:
+            return
+        vc = item.text().strip()
+        if vc in self._cfg.valid_vc_numbers:
+            self._cfg.valid_vc_numbers.remove(vc)
+            self._refresh_vc_list()
 
     def _alert_tab(self) -> QWidget:
         w = QWidget()
@@ -828,6 +944,7 @@ class SettingsDialog(QDialog):
         cfg.detection.nms_threshold        = self.d_nms.value()
         cfg.detection.frame_skip           = self.d_skip.value()
         cfg.detection.model_path           = self.d_model.text().strip()
+        cfg.detection.auto_zoom            = self.d_auto_zoom.isChecked()
 
         cfg.alert.missing_part_sound   = self.a_sound.isChecked()
         cfg.alert.log_missing_frames   = self.a_log.isChecked()

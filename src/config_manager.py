@@ -40,6 +40,7 @@ class DetectionConfig:
     roi_right_pct: float = 1.0
     use_gpu: bool = False
     model_path: str = ""         # empty = use rule-based detector
+    auto_zoom: bool = True      # auto-zoom camera on detected part
 
 
 @dataclass
@@ -85,6 +86,14 @@ _DEFAULT_CHECKPOINTS: Dict[str, dict] = {
 }
 
 
+_DEFAULT_VALID_VC_NUMBERS = [
+    "51621768000R", "51621668000R", "51622268000R", "51622568000R",
+    "51622668000R", "51621970000R", "51622070000R", "51621870000R",
+    "51622170000R", "51622270000R", "51621170000R", "51620970000R",
+    "51621070000R", "51621270000R",
+]
+
+
 @dataclass
 class AppConfig:
     camera1: CameraConfig = field(default_factory=lambda: CameraConfig(
@@ -110,6 +119,7 @@ class AppConfig:
     reference_image: str = "new_qa.png"
     checkpoints: Dict[str, dict] = field(default_factory=lambda: dict(_DEFAULT_CHECKPOINTS))
     demo_mode: str = "off"  # "off", "recorded", "simulation"
+    valid_vc_numbers: List[str] = field(default_factory=lambda: list(_DEFAULT_VALID_VC_NUMBERS))
 
 
 class ConfigManager:
@@ -166,6 +176,7 @@ class ConfigManager:
             "reference_image": self._cfg.reference_image,
             "checkpoints": self._cfg.checkpoints,
             "demo_mode": self._cfg.demo_mode,
+            "valid_vc_numbers": self._cfg.valid_vc_numbers,
         }
 
     @staticmethod
@@ -206,6 +217,8 @@ class ConfigManager:
             _update(self._cfg.serial, data["serial"])
         if "database" in data:
             _update(self._cfg.database, data["database"])
+        if "valid_vc_numbers" in data and isinstance(data["valid_vc_numbers"], list):
+            self._cfg.valid_vc_numbers = list(data["valid_vc_numbers"])
         for k in ("theme", "conveyor_direction", "line_id", "station_id",
                   "reference_image", "checkpoints", "demo_mode"):
             if k in data:

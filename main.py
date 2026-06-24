@@ -20,6 +20,15 @@ import traceback
 # Ensure root package is importable regardless of the working directory.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Step 0: import torch BEFORE any Qt/PyQt import.
+# On Windows, PyTorch ≥2.9.0 (ultralytics dependency) crashes with
+# [WinError 1114] on c10.dll if PyQt loads first. Loading torch here
+# ensures the DLL is initialised in the correct order.
+try:
+    import torch  # noqa: F401
+except ImportError:
+    pass  # torch optional — detection falls back to rule-based
+
 # Step 1: import our modules (this triggers `import cv2`, which on Linux may
 # clobber the Qt plugin search path).
 from src.main_window import MainWindow

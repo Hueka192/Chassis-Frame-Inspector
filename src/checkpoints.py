@@ -62,7 +62,7 @@ CHECKPOINTS: List[Checkpoint] = [
     Checkpoint(5,  "CL-05", "B/S Eng Mtg Bkt",
                "Both sides engine mounting bracket", 1,
                "Engine area", "BOTH", 2,
-               ["engine", "mtg", "bkt"], "new_qa.png"),
+               ["engine", "eng", "mtg", "bkt"], "new_qa.png"),
 
     Checkpoint(6,  "CL-06", "APU Fitment with bkt",
                "APU fitment with bracket", 1,

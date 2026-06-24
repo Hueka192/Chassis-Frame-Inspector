@@ -2,6 +2,7 @@
 Camera feed display widget.
 Renders BGR numpy frames efficiently via QImage, with overlay info.
 Supports digital zoom via config and mouse wheel on the widget.
+Now with programmatic auto-zoom animation on detected parts.
 """
 
 from __future__ import annotations
@@ -47,24 +48,121 @@ class CameraWidget(QWidget):
         self._drag_start_y = 0
         self._pan_start_x = 0.0
         self._pan_start_y = 0.0
+        # Auto-zoom animation state
+        self._auto_zoom_enabled = True
+        self._anim_timer = QTimer(self)
+        self._anim_timer.timeout.connect(self._anim_tick)
+        self._anim_timer.setInterval(16)  # ~60 fps
+        self._animating = False
+        self._anim_start_time = 0.0
+        self._anim_duration = 300.0
+        self._zoom_start = 1.0
+        self._pan_x_start = 0.0
+        self._pan_y_start = 0.0
+        self._zoom_target = 1.0
+        self._pan_x_target = 0.0
+        self._pan_y_target = 0.0
+
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumSize(320, 180)
         self.setStyleSheet("background:#0d0f14; border:1px solid #2a2d3a;")
         self.setFocusPolicy(Qt.WheelFocus)
         self.setMouseTracking(True)
 
+    def set_auto_zoom_enabled(self, enabled: bool):
+        self._auto_zoom_enabled = enabled
+        if not enabled:
+            self._anim_timer.stop()
+            self._animating = False
+
+    def zoom_to_rect(self, nx: float, ny: float, nw: float, nh: float):
+        """Zoom and pan to center a normalized bounding box on the widget."""
+        if not self._auto_zoom_enabled or self._pixmap is None:
+            return
+        pm = self._pixmap
+        eps = 0.01
+        nw = max(nw, eps)
+        nh = max(nh, eps)
+        # Zoom so the bounding box fills ~40% of the visible area
+        target_zoom = max(0.4 / nw, 0.4 / nh)
+        target_zoom = max(self._min_zoom, min(self._max_zoom, target_zoom))
+        # Pan to center the bounding box
+        cx_norm = nx + nw / 2.0
+        cy_norm = ny + nh / 2.0
+        target_pan_x = target_zoom * pm.width() * (0.5 - cx_norm)
+        target_pan_y = target_zoom * pm.height() * (0.5 - cy_norm)
+        # Clamp targets
+        old_zoom = self._zoom
+        self._zoom = target_zoom
+        self._pan_offset_x = target_pan_x
+        self._pan_offset_y = target_pan_y
+        self._clamp_pan()
+        target_pan_x = self._pan_offset_x
+        target_pan_y = self._pan_offset_y
+        self._zoom = old_zoom
+        self._pan_offset_x = self._pan_x_start
+        self._pan_offset_y = self._pan_y_start
+        # Animate from current to target
+        self._start_anim(target_zoom, target_pan_x, target_pan_y)
+
+    def zoom_reset(self):
+        """Animate back to full view."""
+        self._start_anim(1.0, 0.0, 0.0)
+
+    def _easing(self, t: float) -> float:
+        """Ease-out cubic."""
+        return 1.0 - (1.0 - t) ** 3
+
+    def _start_anim(self, to_zoom: float, to_pan_x: float, to_pan_y: float, duration_ms: float = 300.0):
+        self._zoom_start = self._zoom
+        self._pan_x_start = self._pan_offset_x
+        self._pan_y_start = self._pan_offset_y
+        self._zoom_target = to_zoom
+        self._pan_x_target = to_pan_x
+        self._pan_y_target = to_pan_y
+        self._anim_duration = duration_ms
+        self._anim_start_time = time.monotonic()
+        self._animating = True
+        self._anim_timer.start()
+
+    def _anim_tick(self):
+        elapsed = (time.monotonic() - self._anim_start_time) * 1000.0
+        progress = min(1.0, elapsed / self._anim_duration)
+        t = self._easing(progress)
+        self._zoom = self._zoom_start + (self._zoom_target - self._zoom_start) * t
+        self._pan_offset_x = self._pan_x_start + (self._pan_x_target - self._pan_x_start) * t
+        self._pan_offset_y = self._pan_y_start + (self._pan_y_target - self._pan_y_start) * t
+        if progress >= 1.0:
+            self._zoom = self._zoom_target
+            self._pan_offset_x = self._pan_x_target
+            self._pan_offset_y = self._pan_y_target
+            self._anim_timer.stop()
+            self._animating = False
+        self._clamp_pan()
+        self.update()
+
     def wheelEvent(self, event):
+        if self._animating:
+            self._anim_timer.stop()
+            self._animating = False
         delta = event.angleDelta().y()
         if delta > 0:
             self._zoom = min(self._max_zoom, self._zoom + 0.25)
         else:
             self._zoom = max(self._min_zoom, self._zoom - 0.25)
-        # Clamp pan offsets after zoom change
         self._clamp_pan()
         self.update()
         event.accept()
 
     def mousePressEvent(self, event):
+        if self._animating:
+            self._anim_timer.stop()
+            self._animating = False
+            self._zoom = self._zoom_target
+            self._pan_offset_x = self._pan_x_target
+            self._pan_offset_y = self._pan_y_target
+            self._clamp_pan()
+            self.update()
         if event.button() == Qt.LeftButton and self._zoom > 1.0 and self._pixmap is not None:
             self._dragging = True
             self._drag_start_x = event.x()

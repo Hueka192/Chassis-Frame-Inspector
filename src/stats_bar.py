@@ -12,20 +12,22 @@ class KPITile(QFrame):
         super().__init__(parent)
         self.setFrameShape(QFrame.NoFrame)
         self.setStyleSheet(
-            f"background:#141828; border-radius:8px; border-left:3px solid {color};"
+            f"background:qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+            f"stop:0 #141828,stop:1 #10141e);"
+            f"border-radius:8px;"
         )
-        self.setFixedHeight(max(48, int(64 * scale)))
+        self.setFixedHeight(max(52, int(72 * scale)))
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 4, 10, 4)
-        lay.setSpacing(1)
+        lay.setContentsMargins(12, 6, 12, 6)
+        lay.setSpacing(2)
         self._t = QLabel(title)
         self._t.setStyleSheet(
-            f"color:{color}; font-size:10px; font-weight:bold; letter-spacing:1.5px;"
+            f"color:{color}; font-size:{'13px' if big else '11px'}; font-weight:bold; letter-spacing:2px; background:transparent;"
         )
-        sz = "22px" if big else "18px"
+        sz = "26px" if big else "22px"
         self._v = QLabel(value)
         self._v.setStyleSheet(
-            f"color:#e0e6ff; font-size:{sz}; font-weight:bold; font-family:Consolas;"
+            f"color:#e0e6ff; font-size:{sz}; font-weight:bold; font-family:Consolas; background:transparent;"
         )
         lay.addWidget(self._t)
         lay.addWidget(self._v)
@@ -33,7 +35,7 @@ class KPITile(QFrame):
     def set_value(self, v: str, color: str = "#e0e6ff"):
         self._v.setText(v)
         self._v.setStyleSheet(
-            f"color:{color}; font-size:{'22px' if 'OK' in v or 'NG' in v else '18px'}; font-weight:bold; font-family:Consolas;"
+            f"color:{color}; font-size:{'26px' if 'OK' in v or 'NG' in v else '22px'}; font-weight:bold; font-family:Consolas; background:transparent;"
         )
 
 
@@ -56,8 +58,8 @@ class VerdictBadge(QLabel):
     def __init__(self, parent=None, scale=1.0):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
-        self.setFixedHeight(max(48, int(62 * scale)))
-        self.setFont(QFont("Segoe UI", max(11, int(14 * scale)), QFont.Bold))
+        self.setFixedHeight(max(52, int(66 * scale)))
+        self.setFont(QFont("Segoe UI", max(13, int(16 * scale)), QFont.Bold))
 
         self._current_state = "SCAN_VC"
         self._flash_visible = True
@@ -73,13 +75,14 @@ class VerdictBadge(QLabel):
         self.setText(text)
         if bright:
             self.setStyleSheet(
-                f"color:{fg}; background:{bg}; border-radius:8px; border:2px solid {fg};"
+                f"color:{fg}; background:qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+                f"stop:0 {bg},stop:1 #0d0f18);"
+                f"border-radius:10px;"
+                f"padding:0 14px;"
             )
         else:
-            # Dim version — faded text, no border, slightly darker bg for clear contrast
             self.setStyleSheet(
-                f"color:{fg}44; background:#0a0c14; border-radius:8px; "
-                f"border:2px solid {fg}22;"
+                f"color:{fg}44; background:#0a0c14; border-radius:10px;"
             )
 
     def _flash_tick(self):
@@ -112,7 +115,7 @@ class StatsBar(QWidget):
     def __init__(self, parent=None, scale=1.0):
         super().__init__(parent)
         self._scale = scale
-        self.setFixedHeight(max(52, int(66 * scale)))
+        self.setFixedHeight(max(60, int(78 * scale)))
         self.setStyleSheet("background:#0d0f14;")
         self._start = time.time()
         self._build()
@@ -120,13 +123,13 @@ class StatsBar(QWidget):
     def _build(self):
         s = self._scale
         lay = QHBoxLayout(self)
-        m = max(6, int(10 * s))
-        lay.setContentsMargins(m, max(2, int(4 * s)), m, max(2, int(4 * s)))
-        lay.setSpacing(max(4, int(8 * s)))
+        m = max(8, int(12 * s))
+        lay.setContentsMargins(m, max(4, int(6 * s)), m, max(4, int(6 * s)))
+        lay.setSpacing(max(6, int(10 * s)))
 
         # Scanned VIN/VC info (left side)
-        ifsz = max(11, int(13 * s))
-        iw = max(120, int(160 * s))
+        ifsz = max(13, int(15 * s))
+        iw = max(140, int(180 * s))
         self._vin_info = QLabel("")
         self._vin_info.setStyleSheet(
             f"color:#ffd740; font-size:{ifsz}px; font-weight:bold; font-family:Consolas; background:transparent;"
@@ -151,19 +154,19 @@ class StatsBar(QWidget):
         lay.addWidget(info_sep)
 
         self.verdict  = VerdictBadge(scale=s)
-        self.verdict.setFixedWidth(max(120, int(150 * s)))
+        self.verdict.setFixedWidth(max(140, int(170 * s)))
 
-        self.tile_veh = KPITile("VEHICLES TESTED", "0", "#aa88ff", big=True, scale=s)
-        self.tile_veh.setFixedWidth(max(120, int(150 * s)))
+        self.tile_veh = KPITile("Tested", "0", "#aa88ff", big=True, scale=s)
+        self.tile_veh.setFixedWidth(max(140, int(170 * s)))
 
         self.tile_ok  = KPITile("OK",  "0", "#00e676", big=True, scale=s)
-        self.tile_ok.setFixedWidth(max(64, int(86 * s)))
+        self.tile_ok.setFixedWidth(max(80, int(100 * s)))
 
         self.tile_ng  = KPITile("NG",  "0", "#ff5252", big=True, scale=s)
-        self.tile_ng.setFixedWidth(max(64, int(86 * s)))
+        self.tile_ng.setFixedWidth(max(80, int(100 * s)))
 
         self.tile_na  = KPITile("NA",  "0", "#ffb300", big=True, scale=s)
-        self.tile_na.setFixedWidth(max(64, int(86 * s)))
+        self.tile_na.setFixedWidth(max(80, int(100 * s)))
 
         for w in [self.verdict, self.tile_veh, self.tile_ok, self.tile_ng, self.tile_na]:
             lay.addWidget(w)

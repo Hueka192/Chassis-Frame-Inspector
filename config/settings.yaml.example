@@ -1,0 +1,73 @@
+alert:
+  auto_save_ng_frames: true
+  log_missing_frames: true
+  missing_part_sound: true
+  ng_save_dir: logs/ng_frames
+camera1:
+  buffer_size: 1
+  digital_zoom: 1.0
+  enabled: true
+  fps: 15
+  height: 2048
+  label: Left View
+  model_path: assets/Trained_model/Left_best.pt
+  reconnect_delay: 3
+  rtsp_url: rtsp://admin:password@192.168.1.100/Streaming/Channels/101
+  video_path: assets/left_view.mp4
+  width: 3072
+camera2:
+  buffer_size: 1
+  digital_zoom: 1.0
+  enabled: true
+  fps: 15
+  height: 2048
+  label: Right View
+  model_path: assets/Trained_model/right_best.pt
+  reconnect_delay: 3
+  rtsp_url: rtsp://admin:password@192.168.1.101/Streaming/Channels/101
+  video_path: assets/right_view.mp4
+  width: 3072
+checkpoints:
+  CL-01: {camera: 1, h: 0.13, name: Resilience bkt., w: 0.23, x: 0.40, y: 0.11}
+  CL-02: {camera: 1, h: 0.22, name: B/S Bumper support bkt., w: 0.14, x: 0.12, y: 0.13}
+  CL-03: {camera: 1, h: 0.12, name: Bumper support bkt, w: 0.14, x: 0.09, y: 0.90}
+  CL-04: {camera: 2, h: 0.19, name: B/S Trunnion bkt mtg on frame, w: 0.15, x: 0.77, y: 0.84}
+  CL-05: {camera: 2, h: 0.18, name: B/S Eng Mtg Bkt, w: 0.20, x: 0.29, y: 0.90}
+  CL-06: {camera: 2, h: 0.19, name: APU Fitment with bkt, w: 0.15, x: 0.48, y: 0.88}
+  CL-07: {camera: 2, h: 0.25, name: B/S ARB Rear mtg BKT, w: 0.13, x: 0.92, y: 0.81}
+  CL-08: {camera: 2, h: 0.21, name: Articulation Stopper, w: 0.15, x: 0.81, y: 0.14}
+conveyor_direction: left_to_right
+database:
+  database: your_database
+  host: 192.168.1.200
+  password: your_password
+  port: 5432
+  table: your_table
+  user: postgres
+  vc_column: VC_no
+  vin_column: VIN_no
+demo_mode: recorded
+detection:
+  auto_zoom: false
+  confidence_threshold: 0.45
+  frame_skip: 3
+  model_path: assets/best.pt
+  nms_threshold: 0.4
+  roi_bottom_pct: 1.0
+  roi_left_pct: 0.0
+  roi_right_pct: 1.0
+  roi_top_pct: 0.0
+  use_gpu: false
+line_id: LINE-03
+reference_image: new_qa.png
+serial:
+  baudrate: 9600
+  bytesize: 8
+  enabled: true
+  flow_control: none
+  parity: N
+  port: COM4
+  stopbits: 1
+station_id: 01_VIN_Scan
+theme: dark
+valid_vc_numbers: []

@@ -12,3 +12,4 @@ logs/*.db-wal
 logs/ng_frames/
 config/settings_local.yaml
 assets/*.mp4
+config/settings.yaml

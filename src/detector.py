@@ -321,15 +321,87 @@ class YOLODetector:
 
 # ── Detection worker thread ───────────────────────────────────────────────────
 
+class _BoxTracker:
+    """Per-camera temporal smoother: requires N consecutive sightings
+    before a box is reported, and holds it for M frames after disappearance."""
+
+    def __init__(self, confirm: int = 2, hold: int = 4):
+        self._confirm = confirm
+        self._hold = hold
+        self._tracks: Dict[str, dict] = {}  # box_key → {counter, missing, box}
+
+    def _key(self, b: BBox) -> str:
+        return f"{b.x1},{b.y1},{b.x2},{b.y2}"
+
+    def _iou(self, a: BBox, b: BBox) -> float:
+        ix1 = max(a.x1, b.x1); iy1 = max(a.y1, b.y1)
+        ix2 = min(a.x2, b.x2); iy2 = min(a.y2, b.y2)
+        inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+        if inter == 0:
+            return 0.0
+        return inter / (a.w * a.h + b.w * b.h - inter)
+
+    def update(self, boxes: List[BBox], iou_thresh: float = 0.35) -> List[BBox]:
+        matched_keys = set()
+        new_tracks: Dict[str, dict] = {}
+
+        for b in boxes:
+            best_key = None
+            best_iou = 0.0
+            for key in self._tracks:
+                iou = self._iou(b, self._tracks[key]["box"])
+                if iou > best_iou and iou >= iou_thresh:
+                    best_iou = iou
+                    best_key = key
+
+            if best_key and best_key in self._tracks:
+                track = self._tracks[best_key]
+                track["counter"] = min(track["counter"] + 1, self._confirm + 1)
+                track["missing"] = 0
+                track["box"] = b
+                k = self._key(b)
+                new_tracks[k] = track
+                matched_keys.add(best_key)
+            else:
+                k = self._key(b)
+                new_tracks[k] = {"counter": 1, "missing": 0, "box": b}
+
+        # Carry over unmatched tracks with hold decay
+        for key, track in self._tracks.items():
+            if key not in matched_keys:
+                if track["counter"] >= self._confirm:
+                    track["missing"] += 1
+                    if track["missing"] <= self._hold:
+                        new_tracks[key] = track
+                # else discard — never confirmed, drop immediately
+
+        self._tracks = new_tracks
+
+        # Return only confirmed boxes
+        out = []
+        for track in self._tracks.values():
+            if track["counter"] >= self._confirm:
+                out.append(track["box"])
+        return out
+
+    def reset(self):
+        self._tracks.clear()
+
+
 class DetectionWorker(QThread):
     """
     Background thread — receives frames via enqueue(), emits results.
     Supports per-camera YOLO models via CameraConfig.model_path.
+    Includes temporal smoothing to prevent bounding-box flicker.
     """
     result_ready    = pyqtSignal(object)    # DetectionResult
     checkpoint_hit  = pyqtSignal(int, int)  # (cam_id, cp_id)
     frame_presence  = pyqtSignal(bool)      # True = frame in view
     tracking_update = pyqtSignal(int, set)  # (cam_id, set_of_cp_ids_with_positive_hits)
+
+    # Temporal smoothing constants
+    _CONFIRM_THRESHOLD = 2    # frames before a box is shown
+    _HOLD_FRAMES       = 4    # frames to keep a box after last sighting
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -341,6 +413,7 @@ class DetectionWorker(QThread):
         self._last_presence = None
         self._last_tracking: Dict[int, set] = {}  # cam_id → set of in-progress cp_ids
         self._paused = False
+        self._trackers: Dict[int, _BoxTracker] = {}  # cam_id → tracker
 
     def _get_detector(self, cam_id: int):
         """Return detector for a given camera — lazy per-camera init."""
@@ -359,6 +432,8 @@ class DetectionWorker(QThread):
         """Call when new inspection frame starts — clears temporal buffers."""
         for d in self._detectors.values():
             d.reset()
+        for t in self._trackers.values():
+            t.reset()
 
     def enqueue(self, cam_id: int, frame: np.ndarray):
         skip = ConfigManager.instance().cfg.detection.frame_skip
@@ -392,6 +467,13 @@ class DetectionWorker(QThread):
             with QMutexLocker(self._mutex):
                 self._queue.clear()
 
+    def _get_tracker(self, cam_id: int) -> _BoxTracker:
+        if cam_id not in self._trackers:
+            self._trackers[cam_id] = _BoxTracker(
+                confirm=self._CONFIRM_THRESHOLD, hold=self._HOLD_FRAMES
+            )
+        return self._trackers[cam_id]
+
     def run(self):
         while not self._stop:
             item = None
@@ -404,6 +486,13 @@ class DetectionWorker(QThread):
             cam_id, frame = item
             try:
                 result = self._get_detector(cam_id).detect(frame, cam_id)
+                # Apply temporal smoothing to suppress flicker
+                tracker = self._get_tracker(cam_id)
+                result.boxes = tracker.update(result.boxes)
+                # Re-annotate with smoothed boxes
+                result.annotated_frame = _annotate(
+                    frame.copy(), result.boxes, result.frame_present
+                )
                 self.result_ready.emit(result)
 
                 # Emit frame presence only on change
@@ -455,14 +544,27 @@ def _iou(a: BBox, b: BBox) -> float:
 
 
 def _annotate(frame: np.ndarray, boxes: List[BBox], frame_present: bool) -> np.ndarray:
+    placed: list[tuple[int, int, int]] = []
     for b in boxes:
         cv2.rectangle(frame, (b.x1, b.y1), (b.x2, b.y2), b.color, 2)
         lbl = f"{b.label} {b.confidence:.0%}"
-        (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
-        ty = max(b.y1 - 4, th + 4)
-        cv2.rectangle(frame, (b.x1, ty-th-4), (b.x1+tw+4, ty), b.color, -1)
-        cv2.putText(frame, lbl, (b.x1+2, ty-2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0,0,0), 1, cv2.LINE_AA)
+        (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 1.65, 3)
+        pad = 10
+        ty = max(b.y1 - pad, th + pad)
+        step = th + pad * 2
+        for _ in range(10):
+            overlap = False
+            for px, py, ph in placed:
+                if abs(b.x1 - px) < tw + pad * 2 and abs(ty - py) < step:
+                    overlap = True
+                    break
+            if not overlap:
+                break
+            ty += step
+        placed.append((b.x1, ty, step))
+        cv2.rectangle(frame, (b.x1, ty-th-pad), (b.x1+tw+pad, ty), b.color, -1)
+        cv2.putText(frame, lbl, (b.x1+5, ty-5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.65, (0,0,0), 3, cv2.LINE_AA)
     return frame
 
 
