@@ -35,7 +35,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.logger import get_logger
-from src.models import VehicleModel
+from src.models import ChecklistItem, VehicleModel
 
 logger = get_logger("checklist")
 
@@ -43,12 +43,15 @@ logger = get_logger("checklist")
 _OK_COLOR       = "#00e676"   # detected — green
 _NOT_OK_COLOR   = "#ff5252"   # not detected — red
 _NA_COLOR       = "#ffb300"   # not applicable — amber
+_INACTIVE_COLOR = "#3a3d4a"   # dull — no active inspection
 _PANEL_BG       = "#0a0c14"
 _ROW_BG         = "#11141f"
 _ROW_BG_OK      = "#06190f"
 _ROW_BG_NA      = "#1a1400"
+_ROW_BG_IDLE    = "#0d0f14"
 _TEXT_PRIMARY   = "#dde2f0"
 _TEXT_DIM       = "#7c8aa3"
+_TEXT_IDLE      = "#3d4152"
 
 _MIN_ROW_WIDTH  = 300
 _ROW_HEIGHT     = 48
@@ -62,12 +65,13 @@ def _checkpoint_number(item_id: str) -> str:
 
 
 class StatusDot(QWidget):
-    """Small status indicator — pulsing red (not detected) / solid green (detected) / amber (NA)."""
+    """Small status indicator — pulsing red (not detected) / solid green (detected) / amber (NA) / dull gray (inactive)."""
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setFixedSize(13, 13)
         self._status = "PENDING"
+        self._active = False
         self._phase = 0.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -81,6 +85,10 @@ class StatusDot(QWidget):
             self._phase = (self._phase + 0.03) % 1.0
             self.update()
 
+    def set_active(self, active: bool):
+        self._active = active
+        self.update()
+
     def set_status(self, status: str):
         if self._status != status:
             self._status = status
@@ -90,7 +98,11 @@ class StatusDot(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         center = QPointF(self.width() / 2.0, self.height() / 2.0)
-        if self._status == "OK":
+        if not self._active:
+            p.setBrush(QColor(_INACTIVE_COLOR))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(center, 5.5, 5.5)
+        elif self._status == "OK":
             p.setBrush(QColor(_OK_COLOR))
             p.setPen(Qt.NoPen)
             p.drawEllipse(center, 5.5, 5.5)
@@ -116,6 +128,7 @@ class ChecklistRow(QFrame):
         self.item = item
         self._on_toggle = on_toggle
         self._status = "PENDING"
+        self._scale = scale
         rh = max(36, int(_ROW_HEIGHT * scale))
 
         self.setFixedHeight(rh)
@@ -129,6 +142,7 @@ class ChecklistRow(QFrame):
         row.setSpacing(max(4, int(8 * scale)))
 
         cbsz = max(14, int(18 * scale))
+        self._active = True
         self._checkbox = QCheckBox()
         self._checkbox.setFixedSize(cbsz, cbsz)
         self._checkbox.clicked.connect(self._on_checkbox_clicked)
@@ -168,6 +182,12 @@ class ChecklistRow(QFrame):
         self._apply_row_style()
 
     # -- Public API -------------------------------------------------------
+    def set_active(self, active: bool):
+        self._active = active
+        self._dot.set_active(active)
+        self._apply_row_style()
+        self._checkbox.setEnabled(active)
+
     def set_status(self, status: str):
         """status in {'PENDING', 'OK', 'NG', 'NA'}."""
         self._status = status
@@ -183,7 +203,9 @@ class ChecklistRow(QFrame):
 
     # -- Internal -----------------------------------------------------------
     def _apply_row_style(self):
-        if self._status == "OK":
+        if not self._active:
+            bg, border = _ROW_BG_IDLE, _INACTIVE_COLOR + "44"
+        elif self._status == "OK":
             bg, border = _ROW_BG_OK, _OK_COLOR + "77"
         elif self._status == "NA":
             bg, border = _ROW_BG_NA, _NA_COLOR + "77"
@@ -193,14 +215,21 @@ class ChecklistRow(QFrame):
             f"ChecklistRow{{background:{bg}; border:1px solid {border}; "
             "border-radius:6px;}"
         )
+        name_color = _TEXT_IDLE if not self._active else _TEXT_PRIMARY
+        self._name_lbl.setStyleSheet(
+            f"color:{name_color}; font-size:{max(9, int(11 * self._scale))}px; "
+            "font-weight:600; background:transparent;"
+        )
 
     def _on_checkbox_clicked(self, checked: bool):
+        if not self._active:
+            return
         new_status = "OK" if checked else "PENDING"
         self.set_status(new_status)
         self._on_toggle(self.item.id, new_status)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.LeftButton and self._active:
             self._checkbox.setChecked(not self._checkbox.isChecked())
             self._on_checkbox_clicked(self._checkbox.isChecked())
         super().mousePressEvent(event)
@@ -219,6 +248,7 @@ class ChecklistGridPanel(QWidget):
     def __init__(self, scale: float = 1.0, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._scale = scale
+        self._active = True
         self.setStyleSheet(f"background:{_PANEL_BG};")
         self._rows: Dict[str, ChecklistRow] = {}
         self._row_order: List[str] = []
@@ -253,7 +283,7 @@ class ChecklistGridPanel(QWidget):
         hl.addWidget(title)
 
         mfsz = max(9, int(10 * s))
-        self._model_lbl = QLabel("— scan VIN / VC to load checklist —")
+        self._model_lbl = QLabel("— awaiting VIN/VC —")
         self._model_lbl.setStyleSheet(
             f"color:{_TEXT_DIM}; font-size:{mfsz}px; background:transparent;"
         )
@@ -315,6 +345,52 @@ class ChecklistGridPanel(QWidget):
         self._grid.addWidget(self._idle_lbl, 0, 0)
 
     # -- Public API ----------------------------------------------------------
+    def set_active(self, active: bool):
+        self._active = active
+        if not active:
+            self._model_lbl.setStyleSheet(
+                f"color:{_TEXT_IDLE}; font-size:{max(9, int(10 * self._scale))}px; "
+                "background:transparent;"
+            )
+            self._model_lbl.setText("— awaiting VIN/VC —")
+        else:
+            self._model_lbl.setStyleSheet(
+                f"color:{_TEXT_DIM}; font-size:{max(9, int(10 * self._scale))}px; "
+                "background:transparent;"
+            )
+        for row in self._rows.values():
+            row.set_active(active)
+        self._update_progress()
+
+    def load_default_items(self, checkpoints: Dict[str, dict]):
+        """Load items from config checkpoints (no model)."""
+        self._model = None
+        self._clear_grid()
+        self._idle_lbl.setVisible(False)
+
+        self._model_lbl.setText("— awaiting VIN/VC —")
+        self._model_lbl.setStyleSheet(
+            f"color:{_TEXT_IDLE}; font-size:{max(9, int(10 * self._scale))}px; "
+            "background:transparent;"
+        )
+
+        for cid, cp in checkpoints.items():
+            item = ChecklistItem(
+                id=cid,
+                name=cp.get("name", cid),
+                description="",
+                qty=1,
+                location="",
+            )
+            row_widget = ChecklistRow(item, self._handle_row_toggle, scale=self._scale)
+            self._rows[item.id] = row_widget
+            self._row_order.append(item.id)
+
+        self._relayout()
+        self._update_progress()
+        QTimer.singleShot(0, self._relayout)
+        self.set_active(False)
+
     def load_vehicle(self, vc: str, model: VehicleModel, vin: str = ""):
         """Rebuild the checklist grid for the resolved vehicle model."""
         self._model = model
@@ -322,6 +398,10 @@ class ChecklistGridPanel(QWidget):
         self._idle_lbl.setVisible(False)
 
         self._model_lbl.setText(f"{model.name}  ({model.code})")
+        self._model_lbl.setStyleSheet(
+            f"color:{_TEXT_DIM}; font-size:{max(9, int(10 * self._scale))}px; "
+            "background:transparent;"
+        )
 
         for item in model.checklist:
             row_widget = ChecklistRow(item, self._handle_row_toggle, scale=self._scale)
@@ -343,7 +423,11 @@ class ChecklistGridPanel(QWidget):
         """Return to the idle state (no vehicle loaded)."""
         self._model = None
         self._clear_grid()
-        self._model_lbl.setText("— scan VIN / VC to load checklist —")
+        self._model_lbl.setText("— awaiting VIN/VC —")
+        self._model_lbl.setStyleSheet(
+            f"color:{_TEXT_IDLE}; font-size:{max(9, int(10 * self._scale))}px; "
+            "background:transparent;"
+        )
         self._idle_lbl.setVisible(True)
         self._grid.addWidget(self._idle_lbl, 0, 0)
         self._update_progress()
@@ -384,7 +468,7 @@ class ChecklistGridPanel(QWidget):
         total = len(self._rows)
         done = sum(1 for r in self._rows.values() if r.status == "OK")
         self._progress_lbl.setText(f"{done} / {total}" if total else "0 / 0")
-        color = "#00e676" if total and done == total else "#00bcd4"
+        color = _TEXT_IDLE if not self._active else ("#00e676" if total and done == total else "#00bcd4")
         self._progress_lbl.setStyleSheet(
             f"color:{color}; font-size:11px; font-weight:bold; "
             "font-family:Consolas; background:transparent;"

@@ -10,8 +10,10 @@ camera1:
   fps: 15
   height: 2048
   label: Left View
+  model_path: assets/best_left.pt
   reconnect_delay: 3
-  rtsp_url: rtsp://admin:admin123@192.168.1.64/Streaming/Channels/101
+  rtsp_url: rtsp://admin:Tml%40812004@192.168.11.64/Streaming/Channels/101
+  video_path: assets/left_view.mp4
   width: 3072
 camera2:
   buffer_size: 1
@@ -20,58 +22,68 @@ camera2:
   fps: 15
   height: 2048
   label: Right View
+  model_path: assets/best_right.pt
   reconnect_delay: 3
-  rtsp_url: rtsp://admin:admin123@192.168.1.65/Streaming/Channels/101
+  rtsp_url: rtsp://admin:Tml%40812004@192.168.11.65/Streaming/Channels/101
+  video_path: assets/right_view.mp4
   width: 3072
 checkpoints:
   CL-01:
-    h: 0.06
+    camera: 1
+    h: 0.1348314606741573
     name: Resilience bkt.
-    w: 0.06
-    x: 0.4451
-    y: 0.2408
-  CL-04:
-    h: 0.06
+    w: 0.2302158273381295
+    x: 0.3980815347721823
+    y: 0.11235955056179775
+  CL-02:
+    camera: 1
+    h: 0.2247191011235955
     name: B/S Bumper support bkt.
-    w: 0.06
-    x: 0.1321
-    y: 0.2428
-  CL-05:
-    h: 0.06
+    w: 0.13908872901678657
+    x: 0.1223021582733813
+    y: 0.1348314606741573
+  CL-03:
+    camera: 1
+    h: 0.12359550561797752
     name: Bumper support bkt
-    w: 0.06
-    x: 0.1122
-    y: 0.8487
-  CL-08:
-    h: 0.08
+    w: 0.14388489208633093
+    x: 0.08633093525179857
+    y: 0.9044943820224719
+  CL-04:
+    camera: 2
+    h: 0.19101123595505617
     name: B/S Trunnion bkt mtg on frame
-    w: 0.06
-    x: 0.7770
-    y: 0.8049
-  CL-12:
-    h: 0.06
+    w: 0.1486810551558753
+    x: 0.7673860911270983
+    y: 0.8370786516853933
+  CL-05:
+    camera: 2
+    h: 0.1797752808988764
     name: B/S Eng Mtg Bkt
-    w: 0.06
-    x: 0.3148
-    y: 0.8390
-  CL-15:
-    h: 0.06
+    w: 0.19664268585131894
+    x: 0.29256594724220625
+    y: 0.898876404494382
+  CL-06:
+    camera: 2
+    h: 0.19101123595505617
     name: APU Fitment with bkt
-    w: 0.06
-    x: 0.5198
-    y: 0.8364
-  CL-18:
-    h: 0.08
+    w: 0.15347721822541965
+    x: 0.4844124700239808
+    y: 0.8820224719101124
+  CL-07:
+    camera: 2
+    h: 0.24719101123595505
     name: B/S ARB Rear mtg BKT
-    w: 0.06
-    x: 0.9390
-    y: 0.8099
-  CL-19:
-    h: 0.06
+    w: 0.1342925659472422
+    x: 0.9232613908872902
+    y: 0.8146067415730337
+  CL-08:
+    camera: 2
+    h: 0.21348314606741572
     name: Articulation Stopper
-    w: 0.06
-    x: 0.8109
-    y: 0.2598
+    w: 0.1486810551558753
+    x: 0.8081534772182254
+    y: 0.1404494382022472
 conveyor_direction: left_to_right
 database:
   database: kitting_zone_4
@@ -82,6 +94,7 @@ database:
   user: postgres
   vc_column: VC_no
   vin_column: VIN_no
+demo_mode: simulation
 detection:
   confidence_threshold: 0.45
   frame_skip: 3

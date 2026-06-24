@@ -32,22 +32,34 @@ class VCLookupWorker(QThread):
 
     def _lookup_vc(self, vin: str) -> Optional[str]:
         import psycopg2
+        from psycopg2 import sql as pysql
         cfg = ConfigManager.instance().cfg.database
-        conn = psycopg2.connect(
-            host=cfg.host,
-            port=cfg.port,
-            dbname=cfg.database,
-            user=cfg.user,
-            password=cfg.password,
-            connect_timeout=5,
-        )
+        conn = None
         try:
+            conn = psycopg2.connect(
+                host=cfg.host,
+                port=cfg.port,
+                dbname=cfg.database,
+                user=cfg.user,
+                password=cfg.password,
+                connect_timeout=5,
+            )
             with conn.cursor() as cur:
-                sql = f'SELECT "{cfg.vc_column}" FROM "{cfg.table}" WHERE "{cfg.vin_column}" = %s LIMIT 1'
-                cur.execute(sql, (vin,))
+                query = pysql.SQL(
+                    'SELECT {vc_col} FROM {table} WHERE {vin_col} = %s LIMIT 1'
+                ).format(
+                    vc_col=pysql.Identifier(cfg.vc_column),
+                    table=pysql.Identifier(cfg.table),
+                    vin_col=pysql.Identifier(cfg.vin_column),
+                )
+                cur.execute(query, (vin,))
                 row = cur.fetchone()
                 if row:
                     return str(row[0]).strip()
                 return None
         finally:
-            conn.close()
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass

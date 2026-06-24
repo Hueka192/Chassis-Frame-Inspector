@@ -24,7 +24,7 @@ class Checkpoint:
     qty: int
     location: str
     side: str
-    camera_hint: str
+    camera: int   # 0=both, 1=camera1, 2=camera2
     keywords: List[str]
     slide_img: str
     # mutable state — always reset per-frame
@@ -41,42 +41,42 @@ class Checkpoint:
 CHECKPOINTS: List[Checkpoint] = [
     Checkpoint(1,  "CL-01", "Resilience bkt.",
                "Resilience bracket fitment", 1,
-               "Frame middle", "CENTER", "any",
+               "Frame middle", "CENTER", 1,
                ["resilience", "bkt"], "new_qa.png"),
 
-    Checkpoint(2,  "CL-04", "B/S Bumper support bkt.",
+    Checkpoint(2,  "CL-02", "B/S Bumper support bkt.",
                "Both sides bumper support bracket", 1,
-               "Front left", "BOTH", "any",
+               "Front left", "BOTH", 1,
                ["bumper", "support", "bkt"], "new_qa.png"),
 
-    Checkpoint(3,  "CL-05", "Bumper support bkt",
+    Checkpoint(3,  "CL-03", "Bumper support bkt",
                "Bumper support bracket", 1,
-               "Front", "CENTER", "any",
+               "Front", "CENTER", 1,
                ["bumper", "support"], "new_qa.png"),
 
-    Checkpoint(4,  "CL-08", "B/S Trunnion bkt mtg on frame",
+    Checkpoint(4,  "CL-04", "B/S Trunnion bkt mtg on frame",
                "Both sides trunnion bracket mounting on frame", 1,
-               "Rear axle", "BOTH", "any",
+               "Rear axle", "BOTH", 2,
                ["trunnion", "bkt", "mtg"], "new_qa.png"),
 
-    Checkpoint(5,  "CL-12", "B/S Eng Mtg Bkt",
+    Checkpoint(5,  "CL-05", "B/S Eng Mtg Bkt",
                "Both sides engine mounting bracket", 1,
-               "Engine area", "BOTH", "any",
+               "Engine area", "BOTH", 2,
                ["engine", "mtg", "bkt"], "new_qa.png"),
 
-    Checkpoint(6,  "CL-15", "APU Fitment with bkt",
+    Checkpoint(6,  "CL-06", "APU Fitment with bkt",
                "APU fitment with bracket", 1,
-               "Underside", "CENTER", "any",
+               "Underside", "CENTER", 2,
                ["apu", "fitment", "bkt"], "new_qa.png"),
 
-    Checkpoint(7,  "CL-18", "B/S ARB Rear mtg BKT",
+    Checkpoint(7,  "CL-07", "B/S ARB Rear mtg BKT",
                "Both sides anti-roll bar rear mounting bracket", 1,
-               "Rear", "BOTH", "any",
+               "Rear", "BOTH", 2,
                ["arb", "rear", "mtg"], "new_qa.png"),
 
-    Checkpoint(8,  "CL-19", "Articulation Stopper",
+    Checkpoint(8,  "CL-08", "Articulation Stopper",
                "Articulation stopper fitment", 1,
-               "Rear axle zone", "CENTER", "any",
+               "Rear axle zone", "CENTER", 2,
                ["articulation", "stopper"], "new_qa.png"),
 ]
 

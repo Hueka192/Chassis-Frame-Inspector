@@ -23,6 +23,7 @@ class ChecklistItem:
     qty: int = 1
     location: str = ""
     critical: bool = True    # critical = must be OK for overall OK
+    camera: int = 0          # 0=both, 1=cam1, 2=cam2
 
 
 @dataclass
@@ -36,14 +37,14 @@ class VehicleModel:
 # ── Master checklist from qg-1.pptx / new_qa.png (final 8-point inspection) ──
 
 _PREFITMENT_CHECKLIST = [
-    ChecklistItem("CL-01", "Resilience bkt.", "", 1, ""),
-    ChecklistItem("CL-04", "B/S Bumper support bkt.", "", 1, ""),
-    ChecklistItem("CL-05", "Bumper support bkt", "", 1, ""),
-    ChecklistItem("CL-08", "B/S Trunnion bkt mtg on frame", "", 1, ""),
-    ChecklistItem("CL-12", "B/S Eng Mtg Bkt", "", 1, ""),
-    ChecklistItem("CL-15", "APU Fitment with bkt", "", 1, ""),
-    ChecklistItem("CL-18", "B/S ARB Rear mtg BKT", "", 1, ""),
-    ChecklistItem("CL-19", "Articulation Stopper", "", 1, ""),
+    ChecklistItem("CL-01", "Resilience bkt.", "", 1, "", camera=1),
+    ChecklistItem("CL-02", "B/S Bumper support bkt.", "", 1, "", camera=1),
+    ChecklistItem("CL-03", "Bumper support bkt", "", 1, "", camera=1),
+    ChecklistItem("CL-04", "B/S Trunnion bkt mtg on frame", "", 1, "", camera=2),
+    ChecklistItem("CL-05", "B/S Eng Mtg Bkt", "", 1, "", camera=2),
+    ChecklistItem("CL-06", "APU Fitment with bkt", "", 1, "", camera=2),
+    ChecklistItem("CL-07", "B/S ARB Rear mtg BKT", "", 1, "", camera=2),
+    ChecklistItem("CL-08", "Articulation Stopper", "", 1, "", camera=2),
 ]
 
 # ── Vehicle model registry ─────────────────────────────────────────────────────

@@ -67,7 +67,7 @@ FORM_LBL = "color:#8899aa; font-size:10px;"
 # ── Clickable image preview for checkpoint marking ──────────────────────────
 
 class ImagePreview(QWidget):
-    """Displays the reference image and emits clicked fraction coordinates."""
+    """Displays the reference image with draggable red checkpoint rectangles."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -75,11 +75,16 @@ class ImagePreview(QWidget):
         self._scaled: QPixmap | None = None
         self._checkpoints: dict[str, dict] = {}
         self._click_callback = None
+        self._move_callback = None
         self._ix = self._iy = 0
         self.setMinimumSize(300, 200)
         self.setStyleSheet("background:#060812;")
         self.setMouseTracking(True)
-        self._hover_pos: QPoint | None = None
+        self._active: str | None = None
+        self._drag_mode: str | None = None
+        self._hovered: str | None = None
+        self._hover_corner: str | None = None
+        self._resize_init: tuple | None = None
 
     def set_image(self, path: str):
         if os.path.exists(path):
@@ -114,11 +119,66 @@ class ImagePreview(QWidget):
         super().resizeEvent(event)
         self._scale()
 
+    def set_move_callback(self, cb):
+        self._move_callback = cb
+
+    def _rect_px(self, cid: str) -> tuple[int, int, int, int]:
+        cp = self._checkpoints[cid]
+        fx, fy = cp.get("x", 0.5), cp.get("y", 0.5)
+        mx = int(self._ix + fx * self._scaled.width())
+        my = int(self._iy + fy * self._scaled.height())
+        rw = max(16, int(self._scaled.width() * cp.get("w", 0.06)))
+        rh = max(12, int(self._scaled.height() * cp.get("h", 0.06)))
+        return mx, my, rw, rh
+
+    def _corner_at(self, x: int, y: int, mx: int, my: int, rw: int, rh: int) -> str | None:
+        hs = 5
+        for corner, cx, cy in [("tl", mx - rw // 2, my - rh // 2),
+                                ("tr", mx + rw // 2, my - rh // 2),
+                                ("bl", mx - rw // 2, my + rh // 2),
+                                ("br", mx + rw // 2, my + rh // 2)]:
+            if cx - hs <= x <= cx + hs and cy - hs <= y <= cy + hs:
+                return corner
+        return None
+
+    def _marker_at(self, x: int, y: int) -> str | None:
+        if self._scaled is None:
+            return None
+        for cid in self._checkpoints:
+            mx, my, rw, rh = self._rect_px(cid)
+            if mx - rw // 2 <= x <= mx + rw // 2 and my - rh // 2 <= y <= my + rh // 2:
+                return cid
+        return None
+
     def mousePressEvent(self, event: QMouseEvent):
         if self._scaled is None or self._pix is None:
             return
-        lx = event.x() - self._ix
-        ly = event.y() - self._iy
+        x, y = event.x(), event.y()
+        if self._active:
+            mx, my, rw, rh = self._rect_px(self._active)
+            corner = self._corner_at(x, y, mx, my, rw, rh)
+            if corner:
+                self._drag_mode = corner
+                self._resize_init = (mx, my, rw, rh)
+                if corner in ("tl", "bl"):
+                    self.setCursor(Qt.SizeFDiagCursor)
+                else:
+                    self.setCursor(Qt.SizeBDiagCursor)
+                return
+            if self._marker_at(x, y) == self._active:
+                self._drag_mode = "move"
+                self.setCursor(Qt.ClosedHandCursor)
+                return
+        cid = self._marker_at(x, y)
+        if cid:
+            self._active = cid
+            self._drag_mode = "move"
+            self.setCursor(Qt.ClosedHandCursor)
+            return
+        self._active = None
+        self._drag_mode = None
+        lx = x - self._ix
+        ly = y - self._iy
         if 0 <= lx < self._scaled.width() and 0 <= ly < self._scaled.height():
             fx = lx / self._scaled.width()
             fy = ly / self._scaled.height()
@@ -126,8 +186,57 @@ class ImagePreview(QWidget):
                 self._click_callback(fx, fy)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        self._hover_pos = event.pos()
-        self.update()
+        if self._scaled is None:
+            return
+        x, y = event.x(), event.y()
+        mode = self._drag_mode
+
+        if mode in ("tl", "tr", "bl", "br") and self._active:
+            mx0, my0, rw0, rh0 = self._resize_init
+            cp = self._checkpoints[self._active]
+            nw = max(16, int(abs(x - mx0) * 2))
+            nh = max(12, int(abs(y - my0) * 2))
+            cp["w"] = nw / self._scaled.width()
+            cp["h"] = nh / self._scaled.height()
+            if self._move_callback:
+                self._move_callback(self._active, cp.get("x"), cp.get("y"))
+            self.update()
+
+        elif mode == "move" and self._active:
+            lx = x - self._ix
+            ly = y - self._iy
+            fx = max(0, min(1, lx / self._scaled.width()))
+            fy = max(0, min(1, ly / self._scaled.height()))
+            self._checkpoints[self._active]["x"] = fx
+            self._checkpoints[self._active]["y"] = fy
+            if self._move_callback:
+                self._move_callback(self._active, fx, fy)
+            self.update()
+
+        else:
+            self._hovered = self._marker_at(x, y)
+            self._hover_corner = None
+            if self._active and self._hovered == self._active:
+                mx, my, rw, rh = self._rect_px(self._active)
+                self._hover_corner = self._corner_at(x, y, mx, my, rw, rh)
+            if self._hover_corner:
+                if self._hover_corner in ("tl", "br"):
+                    self.setCursor(Qt.SizeFDiagCursor)
+                else:
+                    self.setCursor(Qt.SizeBDiagCursor)
+            elif self._hovered:
+                self.setCursor(Qt.PointingHandCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+            self.update()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if self._drag_mode:
+            self._drag_mode = None
+            self._resize_init = None
+            self.setCursor(Qt.ArrowCursor)
+            if self._move_callback:
+                self._move_callback(None, None, None)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -146,32 +255,69 @@ class ImagePreview(QWidget):
         px = self._scaled
         painter.drawPixmap(self._ix, self._iy, px)
 
-        # Draw checkpoints
+        # Draw checkpoint rectangles
         for cid, cp in self._checkpoints.items():
             fx, fy = cp.get("x", 0.5), cp.get("y", 0.5)
             name = cp.get("name", cid)
             mx = int(self._ix + fx * px.width())
             my = int(self._iy + fy * px.height())
-            r = 7
-            painter.setBrush(QColor("#00bcd4"))
-            painter.setPen(QPen(QColor("#00e676"), 2))
-            painter.drawEllipse(QPoint(mx, my), r, r)
-            painter.setPen(QColor("#00e676"))
+
+            rw = max(16, int(px.width() * cp.get("w", 0.06)))
+            rh = max(12, int(px.height() * cp.get("h", 0.06)))
+            rx, ry = mx - rw // 2, my - rh // 2
+
+            is_active = cid == self._active
+            is_hovered = cid == self._hovered and self._drag_mode is None
+
+            base = QColor("#ff5252")
+            fill = QColor(base)
+            fill.setAlpha(30)
+            bw = 2.6 if not (is_hovered or is_active) else 3.6
+
+            painter.setBrush(fill)
+            pen = QPen(base, bw)
+            if is_active:
+                pen.setStyle(Qt.SolidLine)
+            else:
+                pen.setStyle(Qt.DashLine)
+                pen.setDashPattern([4, 3])
+            painter.setPen(pen)
+            painter.drawRect(QRect(rx, ry, rw, rh))
+
+            painter.setPen(base)
             painter.setFont(QFont("Consolas", 7, QFont.Bold))
-            painter.drawText(QRect(mx - r, my - r, r * 2, r * 2),
-                             Qt.AlignCenter, cid.replace("CL-", ""))
-            lbl = name[:16] + (".." if len(name) > 16 else "")
+            painter.drawText(QRect(rx, ry, rw, rh), Qt.AlignCenter, cid.replace("CL-", ""))
+
+            if is_active and self._drag_mode:
+                lbl = f"{name}  ({fx:.3f}, {fy:.3f})"
+            else:
+                lbl = name[:16] + (".." if len(name) > 16 else "")
+
             painter.setFont(QFont("Segoe UI", 6))
-            lx2 = mx + 10
+            lx2 = mx + rw // 2 + 6
             ly2 = my - 5
             tw = painter.fontMetrics().horizontalAdvance(lbl) + 6
             th = 12
             painter.setBrush(QColor(0, 0, 0, 180))
-            painter.setPen(QPen(QColor("#00e676"), 1))
+            col = QColor("#ffd740") if is_active and self._drag_mode else QColor("#ff5252")
+            painter.setPen(QPen(col, 1))
             painter.drawRoundedRect(lx2, ly2, tw, th, 3, 3)
-            painter.setPen(QColor("#00e676"))
+            painter.setPen(col)
             painter.drawText(QRect(lx2 + 2, ly2, tw - 4, th),
                              Qt.AlignLeft | Qt.AlignVCenter, lbl)
+
+        # Resize handles on active marker
+        if self._active and self._active in self._checkpoints:
+            amx, amy, arw, arh = self._rect_px(self._active)
+            hs = 6
+            hhs = hs // 2
+            for cx, cy in [(amx - arw // 2, amy - arh // 2),
+                           (amx + arw // 2, amy - arh // 2),
+                           (amx - arw // 2, amy + arh // 2),
+                           (amx + arw // 2, amy + arh // 2)]:
+                painter.fillRect(cx - hhs, cy - hhs, hs, hs, QColor("#ff5252"))
+                painter.setPen(QPen(QColor("#ffffff"), 1))
+                painter.drawRect(cx - hhs, cy - hhs, hs, hs)
 
         painter.end()
 
@@ -212,6 +358,7 @@ class OverlayTab(QWidget):
 
         self._preview = ImagePreview()
         self._preview.set_click_callback(self._on_preview_click)
+        self._preview.set_move_callback(self._on_marker_moved)
         split.addWidget(self._preview)
 
         # Right: checkpoint list + controls
@@ -254,7 +401,7 @@ class OverlayTab(QWidget):
 
         # Instructions
         inst = QLabel(
-            "💡 Click on the image to add a checkpoint marker at that position. "
+            "💡 Click on the image to add a marker. Drag existing markers to reposition them. "
             "Use the list to rename or delete markers. Changes take effect after clicking OK."
         )
         inst.setWordWrap(True)
@@ -298,6 +445,13 @@ class OverlayTab(QWidget):
         self._img_lbl.setText(f"Current image: {self._cfg.reference_image}")
         self._preview.set_image(dst)
         self._preview.set_checkpoints(self._checkpoints)
+
+    def _on_marker_moved(self, cid: str | None, fx: float | None, fy: float | None):
+        if cid is None:
+            self._refresh_list()
+        elif cid in self._checkpoints:
+            self._checkpoints[cid]["x"] = fx
+            self._checkpoints[cid]["y"] = fy
 
     def _on_preview_click(self, fx: float, fy: float):
         """User clicked on the image → add marker prompted."""
@@ -449,12 +603,21 @@ class SettingsDialog(QDialog):
         self.__dict__[f"c{idx}_fps"]     = _ispin(cfg.fps, 1, 30)
         self.__dict__[f"c{idx}_recon"]   = _ispin(cfg.reconnect_delay, 1, 30)
 
+        self.__dict__[f"c{idx}_model"]   = _line(cfg.model_path)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setStyleSheet("background:#1c2050; color:#8899ff; border:none; border-radius:4px; padding:4px 10px;")
+        browse_btn.clicked.connect(lambda: self._browse_cam_model(idx))
+        model_row = QHBoxLayout()
+        model_row.addWidget(self.__dict__[f"c{idx}_model"])
+        model_row.addWidget(browse_btn)
+
         form.addRow("", self.__dict__[f"c{idx}_enabled"])
         form.addRow(QLabel("RTSP URL:", styleSheet=FORM_LBL),  self.__dict__[f"c{idx}_url"])
         form.addRow(QLabel("Label:", styleSheet=FORM_LBL),     self.__dict__[f"c{idx}_label"])
         form.addRow(QLabel("Digital Zoom:", styleSheet=FORM_LBL), self.__dict__[f"c{idx}_zoom"])
         form.addRow(QLabel("Target FPS:", styleSheet=FORM_LBL),   self.__dict__[f"c{idx}_fps"])
         form.addRow(QLabel("Reconnect (s):", styleSheet=FORM_LBL),self.__dict__[f"c{idx}_recon"])
+        form.addRow(QLabel("YOLO Model (.pt):", styleSheet=FORM_LBL), model_row)
 
         test_btn = QPushButton(f"Test Camera {idx}")
         test_btn.setStyleSheet(
@@ -467,6 +630,19 @@ class SettingsDialog(QDialog):
         row.addWidget(self.__dict__[f"c{idx}_test_lbl"])
         row.addStretch()
         form.addRow("", row)
+
+        if idx == 1:
+            demo_lbl = QLabel("Demo Mode:", styleSheet=FORM_LBL)
+            self._demo_combo = QComboBox()
+            self._demo_combo.addItems(["Off (RTSP)", "Recorded (video files)", "Simulation (synthetic)"])
+            dm = self._cfg.demo_mode
+            self._demo_combo.setCurrentIndex(0 if dm == "off" else (1 if dm == "recorded" else 2))
+            self._demo_combo.setStyleSheet(
+                "QComboBox{background:#1c1f2e; color:#dde2f0; border:1px solid #2a2d3a;"
+                "border-radius:4px; padding:4px 8px;}"
+                "QComboBox::drop-down{background:#2a2d3a; border:none; width:20px;}"
+            )
+            form.addRow(demo_lbl, self._demo_combo)
 
         return w
 
@@ -610,6 +786,11 @@ class SettingsDialog(QDialog):
         if path:
             self.d_model.setText(path)
 
+    def _browse_cam_model(self, idx: int):
+        path, _ = QFileDialog.getOpenFileName(self, f"Select YOLO Model for Camera {idx}", "", "PyTorch Model (*.pt)")
+        if path:
+            self.__dict__[f"c{idx}_model"].setText(path)
+
     def _test_camera(self, idx: int):
         import cv2
         url = self.__dict__[f"c{idx}_url"].text().strip()
@@ -641,6 +822,7 @@ class SettingsDialog(QDialog):
             cam_cfg.digital_zoom   = self.__dict__[f"c{idx}_zoom"].value()
             cam_cfg.fps            = self.__dict__[f"c{idx}_fps"].value()
             cam_cfg.reconnect_delay= self.__dict__[f"c{idx}_recon"].value()
+            cam_cfg.model_path     = self.__dict__[f"c{idx}_model"].text().strip()
 
         cfg.detection.confidence_threshold = self.d_conf.value()
         cfg.detection.nms_threshold        = self.d_nms.value()
@@ -671,6 +853,9 @@ class SettingsDialog(QDialog):
         cfg.reference_image = ref_img
 
         cfg.theme = self._theme_combo.currentText()
+
+        dm_idx = self._demo_combo.currentIndex()
+        cfg.demo_mode = ["off", "recorded", "simulation"][dm_idx]
 
         ConfigManager.instance().save()
         logger.info("Settings saved from dialog")

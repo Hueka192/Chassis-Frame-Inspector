@@ -1,22 +1,23 @@
 from __future__ import annotations
-import os, time, cv2
+import os, time, cv2, random
 import numpy as np
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Set
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QLabel, QPushButton, QLineEdit, QStackedWidget, QFrame,
     QSizePolicy, QApplication
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QRect, QPoint
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, pyqtSlot, QRect, QPoint
 from PyQt5.QtGui import QFont, QFontMetrics, QPixmap, QPainter, QColor, QPen, QBrush, QImage
 
-from .camera_worker    import CameraWorker, DemoFrameWorker
+from .camera_worker    import CameraWorker, DemoFrameWorker, VideoFileWorker
 from .camera_widget    import CameraWidget
 from .detector         import DetectionWorker
 from .stats_bar        import StatsBar
 from .checklist_panel  import ChecklistGridPanel
+from .checkpoints      import CHECKPOINT_MAP
 from .settings_dialog  import SettingsDialog
 from .config_manager   import ConfigManager
 from .serial_reader    import SerialReader
@@ -27,6 +28,29 @@ from .models           import VehicleModel, resolve_model
 from .logger           import get_logger
 
 logger = get_logger("main_window")
+
+
+class DbCheckWorker(QThread):
+    """Background DB health check — never blocks the UI."""
+    result_ready = pyqtSignal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def run(self):
+        ok = False
+        try:
+            import psycopg2
+            cfg = ConfigManager.instance().cfg.database
+            conn = psycopg2.connect(
+                host=cfg.host, port=cfg.port, dbname=cfg.database,
+                user=cfg.user, password=cfg.password, connect_timeout=3,
+            )
+            conn.close()
+            ok = True
+        except Exception:
+            ok = False
+        self.result_ready.emit(ok)
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 NG_DIR  = os.path.join(LOG_DIR, "ng_frames")
@@ -99,6 +123,8 @@ class ToastPopup(QWidget):
 
     def show_toast(self, text: str, duration_ms: int = 2500):
         self._queue.append((text, duration_ms))
+        if len(self._queue) > 25:
+            self._queue.pop(0)
         if not self.isVisible():
             self._show_next()
 
@@ -119,6 +145,7 @@ class ToastPopup(QWidget):
 
 class TitleBar(QWidget):
     _settings_clicked = pyqtSignal()
+    _exit_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -217,31 +244,41 @@ class TitleBar(QWidget):
         self._settings_btn.clicked.connect(self._settings_clicked.emit)
         lay.addWidget(self._settings_btn)
 
-        # Periodic DB health check
+        lay.addSpacing(max(4, int(8 * s)))
+        self._exit_btn = QPushButton("✕")
+        self._exit_btn.setFixedSize(sb, sb)
+        self._exit_btn.setToolTip("Close application")
+        self._exit_btn.setStyleSheet(
+            f"QPushButton{{background:#501c1c;color:#ff5252;border:none;border-radius:6px;font-size:{max(12, int(16 * s))}px;}}"
+            f"QPushButton:hover{{background:#802020;color:#ff8a8a;}}"
+        )
+        self._exit_btn.clicked.connect(self._exit_clicked.emit)
+        lay.addWidget(self._exit_btn)
+
+        # Periodic DB health check (runs in background thread)
+        self._db_worker: DbCheckWorker | None = None
         self._db_timer = QTimer(self)
         self._db_timer.timeout.connect(self._check_db)
         self._db_timer.start(30000)
         QTimer.singleShot(500, self._check_db)
 
     def _check_db(self):
-        ok = False
-        try:
-            import psycopg2
-            cfg = ConfigManager.instance().cfg.database
-            conn = psycopg2.connect(
-                host=cfg.host, port=cfg.port, dbname=cfg.database,
-                user=cfg.user, password=cfg.password, connect_timeout=3,
-            )
-            conn.close()
-            ok = True
-        except Exception:
-            ok = False
+        if self._db_worker and self._db_worker.isRunning():
+            return
+        self._db_worker = DbCheckWorker()
+        self._db_worker.result_ready.connect(self._on_db_check_result)
+        self._db_worker.start()
+
+    def _on_db_check_result(self, ok: bool):
         self._db_dot.setStyleSheet(
             f"color:#00e676; font-size:{self._dbs}px; background:transparent;"
             if ok else
             f"color:#ff5252; font-size:{self._dbs}px; background:transparent;"
         )
         self._db_dot.setToolTip("DB: Connected" if ok else "DB: Disconnected")
+        if self._db_worker:
+            self._db_worker.deleteLater()
+            self._db_worker = None
 
 
 class ChassisPhotoWidget(QWidget):
@@ -263,15 +300,7 @@ class ChassisPhotoWidget(QWidget):
         self._scaled: QPixmap | None = None
         self._checkpoint_positions: Dict[str, tuple[float, float]] = {}
         self._checkpoint_boxes: Dict[str, tuple[float, float]] = {}
-        self._anim_phase = 0.0
-        self._anim_timer = QTimer(self)
-        self._anim_timer.timeout.connect(self._anim_tick)
-        self._anim_timer.start(100)
         self._load_config()
-
-    def _anim_tick(self):
-        self._anim_phase = (self._anim_phase + 0.06) % 1.0
-        self.update()
 
     def _load_config(self):
         cfg = ConfigManager.instance().cfg
@@ -359,77 +388,54 @@ class ChassisPhotoWidget(QWidget):
             painter.setFont(QFont("Segoe UI", 12))
             painter.drawText(self.rect(), Qt.AlignCenter, "Chassis reference\n(no image loaded)")
 
-        phase = self._anim_phase
+        s = _SCREEN_SCALE
+        _hidden_markers: set = set()
+        for item_id in self._checkpoint_positions:
+            if item_id in _hidden_markers:
+                continue
 
-        for item_id, (fx, fy) in self._checkpoint_positions.items():
-            status = self._statuses.get(item_id, "PENDING")
-            box_fw, box_fh = self._checkpoint_boxes.get(item_id, (0.09, 0.10))
-
+            fx, fy = self._checkpoint_positions[item_id]
+            bw_n, bh_n = self._checkpoint_boxes.get(item_id, (0.09, 0.10))
             mx = ix + int(img_w * fx)
             my = iy + int(img_h * fy)
-            bw = max(24, int(img_w * box_fw))
-            bh = max(20, int(img_h * box_fh))
-            bx0, by0 = mx - bw // 2, my - bh // 2
-            bx1, by1 = bx0 + bw, by0 + bh
+            rw = max(16, int(img_w * bw_n))
+            rh = max(12, int(img_h * bh_n))
+            rx, ry = mx - rw // 2, my - rh // 2
 
-            is_detected = status == "OK"
-            status_color = QColor("#00e676") if is_detected else QColor("#ff5252")
+            is_detected = self._statuses.get(item_id, "PENDING") == "OK"
+            color = QColor("#00e676") if is_detected else QColor("#ff5252")
 
-            if is_detected:
-                fill = QColor(status_color)
-                fill.setAlpha(40)
-                painter.setBrush(fill)
-            else:
-                pulse = 0.5 + 0.5 * abs(phase - 0.5) * 2
-                fill = QColor(status_color)
-                fill.setAlpha(int(18 + 22 * pulse))
-                painter.setBrush(fill)
+            fill = QColor(color)
+            fill.setAlpha(30)
+            painter.setBrush(fill)
+            painter.setPen(QPen(color, 2, Qt.DashLine))
+            painter.drawRect(QRect(rx, ry, rw, rh))
 
-            pen = QPen(status_color, 2.6, Qt.DashLine)
-            pen.setDashPattern([6, 4])
-            painter.setPen(pen)
-            painter.drawRect(QRect(bx0, by0, bw, bh))
-
-            if is_detected:
-                bcx, bcy = bx1, by0
-                painter.setBrush(QColor(6, 8, 18))
-                painter.setPen(Qt.NoPen)
-                painter.drawEllipse(QPoint(bcx, bcy), 10, 10)
-                painter.setBrush(status_color)
-                painter.drawEllipse(QPoint(bcx, bcy), 8, 8)
-                painter.setPen(QPen(QColor(4, 20, 10), 2.2, cap=Qt.RoundCap))
-                painter.drawLine(bcx - 3, bcy + 1, bcx - 1, bcy + 3)
-                painter.drawLine(bcx - 1, bcy + 3, bcx + 4, bcy - 3)
-
-        # Legend strip at bottom
-        lh = max(22, int(28 * _SCREEN_SCALE))
-        ly = H - lh
-        lfsz = max(7, int(8 * _SCREEN_SCALE))
-        painter.fillRect(0, ly, W, lh, QColor(10, 12, 22))
-        legend_items = [
-            ("▭ NOT DETECTED", "#ff5252"),
-            ("▣ DETECTED", "#00e676"),
-        ]
-        lx_start = max(8, int(10 * _SCREEN_SCALE))
-        for text, col in legend_items:
-            painter.setPen(QColor(col))
-            painter.setFont(QFont("Consolas", lfsz, QFont.Bold))
-            painter.drawText(lx_start, ly + lh - max(6, int(8 * _SCREEN_SCALE)), text)
-            lx_start += painter.fontMetrics().horizontalAdvance(text) + max(12, int(20 * _SCREEN_SCALE))
+            painter.setPen(color)
+            painter.setFont(QFont("Consolas", 7, QFont.Bold))
+            painter.drawText(QRect(rx, ry, rw, rh), Qt.AlignCenter, item_id.replace("CL-", ""))
 
         total = len(self._statuses)
         done = sum(1 for s in self._statuses.values() if s == "OK")
+        lfsz = max(7, int(8 * s))
+        lh = max(22, int(28 * s))
+        ly = H - lh
+        painter.fillRect(0, ly, W, lh, QColor(10, 12, 22))
         count_text = f"{done}/{total} detected"
         painter.setPen(QColor("#00bcd4"))
         painter.setFont(QFont("Consolas", lfsz, QFont.Bold))
         cw = painter.fontMetrics().horizontalAdvance(count_text)
-        painter.drawText(W - cw - max(8, int(12 * _SCREEN_SCALE)), ly + lh - max(6, int(8 * _SCREEN_SCALE)), count_text)
+        painter.drawText(W - cw - max(8, int(12 * s)), ly + lh - max(6, int(8 * s)), count_text)
 
 
 
 
 
 class MainWindow(QMainWindow):
+
+    @property
+    def _demo_mode(self) -> str:
+        return self._cfg.demo_mode  # "off", "recorded", "simulation"
 
     def __init__(self):
         super().__init__()
@@ -442,9 +448,9 @@ class MainWindow(QMainWindow):
 
         self.showFullScreen()
 
-        self._cfg        = ConfigManager.instance().cfg
-        self._demo_mode  = False
-        self._state      = STATE_SCAN_VC
+        self._cfg          = ConfigManager.instance().cfg
+        self._cfg.demo_mode = "off"  # always start in RTSP mode
+        self._state        = STATE_SCAN_VC
 
         self._db = Database.instance()
         self._session_id = self._db.start_session(
@@ -457,6 +463,7 @@ class MainWindow(QMainWindow):
         self._current_veh_id  = 0
         self._scan_start      = 0.0
         self._pending_vin     = None
+        self._vc_lookup_workers: set[VCLookupWorker] = set()
 
         self._cam_workers: dict[int, object] = {}
         self._last_frames: dict[int, np.ndarray] = {}
@@ -477,6 +484,7 @@ class MainWindow(QMainWindow):
         self._demo_detect_timer = QTimer(self)
         self._demo_detect_timer.timeout.connect(self._demo_auto_detect)
         self._demo_checkpoint_idx = 0
+        self._demo_cycle_count = 0
 
         self._build_ui()
         self._connect_signals()
@@ -498,6 +506,7 @@ class MainWindow(QMainWindow):
 
         self._title_bar = TitleBar()
         self._title_bar._settings_clicked.connect(self._open_settings)
+        self._title_bar._exit_clicked.connect(self._on_exit_clicked)
         root.addWidget(self._title_bar)
         self._dash_bar = self._build_dashboard()
         root.addWidget(self._dash_bar)
@@ -563,6 +572,7 @@ class MainWindow(QMainWindow):
         self._cam_stack = QStackedWidget()
         self._cam_w1 = CameraWidget(1, self._cfg.camera1.label or "Left View")
         self._cam_w2 = CameraWidget(2, self._cfg.camera2.label or "Right View")
+        self._cam_w2.setStyleSheet("background:#0a0d1e; border:1px solid #1a2a4a;")
         self._cam_stack.addWidget(self._cam_w1)
         self._cam_stack.addWidget(self._cam_w2)
         cam_box.addWidget(self._cam_stack, stretch=1)
@@ -623,6 +633,7 @@ class MainWindow(QMainWindow):
         # the camera feed and the chassis reference image.
         self._checklist = ChecklistGridPanel(scale=s)
         self._checklist.setMinimumHeight(max(80, int(140 * s)))
+        self._checklist.load_default_items(self._cfg.checkpoints)
 
         self._v_split = QSplitter(Qt.Vertical)
         self._v_split.setHandleWidth(3)
@@ -765,12 +776,6 @@ class MainWindow(QMainWindow):
         self._scan_btn.clicked.connect(self._submit_scan)
         lay.addWidget(self._scan_btn, alignment=Qt.AlignBottom)
 
-        lay.addWidget(_vsep())
-
-        self._demo_btn = _btn("DEMO MODE: OFF", "#ff9800", self._toggle_demo,
-                              "Toggle live RTSP / demo simulation")
-        lay.addWidget(self._demo_btn, alignment=Qt.AlignVCenter)
-
         lay.addStretch(1)
 
         # KPI tiles + verdict badge (same widget as before, now embedded here)
@@ -804,28 +809,28 @@ class MainWindow(QMainWindow):
                 cid: cp.get("name", cid)
                 for cid, cp in self._cfg.checkpoints.items()
             })
+            self._checklist.set_active(False)
             self._show_scan_banner(True)
 
         elif state == STATE_INSPECT:
             self._show_scan_banner(False)
-            self.stats_bar.show_scan_info(self._current_vin, self._current_vc)
-            info = f"VC: {self._current_vc}"
-            if self._current_vin:
-                info += f"  VIN: {self._current_vin}"
-            self.statusBar().showMessage(f"{info} — inspecting")
+            self._frame_status_label.setText("●  SCANNING")
+            self.statusBar().showMessage("Inspecting — checkpoints being detected")
             self._det_worker.pause_detection(False)
             self._det_worker.reset_detector()
+            self._det_worker.reset_presence()
 
             if self._current_model:
                 names = {it.id: it.name for it in self._current_model.checklist}
                 self._chassis_photo.load_checklist(names)
-                self._checklist.load_vehicle(self._current_vc, self._current_model, self._current_vin)
+                self._checklist.set_active(True)
 
             self._finalise_timer.start(_AUTO_FINALISE_DELAY_MS)
 
             # Start demo auto-detect if in demo mode
-            if self._demo_mode and self._current_model:
+            if self._demo_mode != "off" and self._current_model:
                 self._demo_checkpoint_idx = 0
+                self._demo_cycle_count = 0
                 self._demo_detect_timer.start(800)
 
         elif state == STATE_DONE:
@@ -885,7 +890,7 @@ class MainWindow(QMainWindow):
         self._submit_timer.stop()
         vin = self._vin_input.text().strip().upper()
         vc  = self._vc_input.text().strip().upper()
-        if self._demo_mode:
+        if self._demo_mode != "off":
             if not vin:
                 vin = f"DEMO{vc or 'VIN'}000001"
             if not vc:
@@ -899,12 +904,17 @@ class MainWindow(QMainWindow):
         self._vc_input.clear()
 
     def _on_scan_submitted(self, vin: str, vc: str):
-        # Skip NA check in demo mode
-        if not self._demo_mode and vc not in _VALID_VC_NUMBERS:
-            self._on_vc_not_applicable(vin, vc)
-            return
-        model = resolve_model(vc)
-        self._on_vc_accepted(vin, vc, model)
+        try:
+            # Skip NA check in demo mode
+            if self._demo_mode == "off" and vc not in _VALID_VC_NUMBERS:
+                self._on_vc_not_applicable(vin, vc)
+                return
+            model = resolve_model(vc)
+            self._on_vc_accepted(vin, vc, model)
+        except Exception as e:
+            logger.error(f"Scan submission error: {e}")
+            self._show_toast(f"Scan error: {e}", 5000)
+            self._enter_state(STATE_SCAN_VC)
 
     def _on_vc_not_applicable(self, vin: str, vc: str):
         """Handle a VC that is not in the valid list — mark everything NA."""
@@ -951,64 +961,71 @@ class MainWindow(QMainWindow):
         self._enter_state(STATE_SCAN_VC)
 
     def _on_vc_accepted(self, vin: str, vc: str, model: VehicleModel):
-        if self._state in (STATE_INSPECT, STATE_DONE):
-            self._auto_finalise()
+        try:
+            if self._state in (STATE_INSPECT, STATE_DONE):
+                self._auto_finalise()
 
-        self._current_vin    = vin
-        self._current_vc     = vc
-        self._current_model  = model
-        self._scan_start     = time.time()
-        self._frame_in_view  = False
+            self._current_vin    = vin
+            self._current_vc     = vc
+            self._current_model  = model
+            self._scan_start     = time.time()
+            self._frame_in_view  = False
 
-        self._current_veh_id = self._db.create_vehicle(
-            self._session_id, vc, vin,
-            model.code, model.name,
-            len(model.checklist)
-        )
-        for item in model.checklist:
-            self._db.save_checklist_item(
-                self._current_veh_id, item.id, item.name, "PENDING"
+            self._current_veh_id = self._db.create_vehicle(
+                self._session_id, vc, vin,
+                model.code, model.name,
+                len(model.checklist)
             )
+            for item in model.checklist:
+                self._db.save_checklist_item(
+                    self._current_veh_id, item.id, item.name, "PENDING"
+                )
 
-        self._checklist.load_vehicle(vc, model, vin)
+            self._checklist.load_vehicle(vc, model, vin)
 
-        logger.info(f"VIN={vin} VC={vc} → model {model.code}, db_id={self._current_veh_id}")
-        self._enter_state(STATE_INSPECT)
+            logger.info(f"VIN={vin} VC={vc} → model {model.code}, db_id={self._current_veh_id}")
+            self._enter_state(STATE_INSPECT)
+        except Exception as e:
+            logger.error(f"VC accept error: {e}")
+            self._show_toast(f"Failed to start inspection: {e}", 5000)
+            self._enter_state(STATE_SCAN_VC)
 
     def _auto_finalise(self):
         if self._state not in (STATE_INSPECT, STATE_DONE) or not self._current_veh_id:
             return
         self._finalise_timer.stop()
 
-        results  = self._chassis_photo.get_statuses()
-        ok_items = sum(1 for s in results.values() if s == "OK")
-        ng_items = sum(1 for s in results.values() if s != "OK")
-        verdict  = "OK" if ng_items == 0 else "NG"
-        duration = time.time() - self._scan_start
+        veh_id = self._current_veh_id
+        vc     = self._current_vc
 
-        model = self._current_model
-        if model:
-            for item in model.checklist:
-                st = results.get(item.id, "PENDING")
-                self._db.save_checklist_item(
-                    self._current_veh_id, item.id, item.name, st
-                )
+        try:
+            results  = self._chassis_photo.get_statuses()
+            ok_items = sum(1 for s in results.values() if s == "OK")
+            ng_items = sum(1 for s in results.values() if s != "OK")
+            verdict  = "OK" if ng_items == 0 else "NG"
 
-        self._db.finalise_vehicle(
-            self._current_veh_id, verdict, ok_items, ng_items
-        )
+            model = self._current_model
+            if model:
+                for item in model.checklist:
+                    st = results.get(item.id, "PENDING")
+                    self._db.save_checklist_item(veh_id, item.id, item.name, st)
 
-        if verdict == "NG" and self._cfg.alert.auto_save_ng_frames:
-            self._save_ng_frames(self._current_vc)
+            self._db.finalise_vehicle(veh_id, verdict, ok_items, ng_items)
 
-        stats = self._db.get_session_stats(self._session_id)
-        self.stats_bar.on_stats(stats)
-        self.stats_bar.on_verdict(verdict)
+            if verdict == "NG" and self._cfg.alert.auto_save_ng_frames:
+                self._save_ng_frames(vc)
 
-        logger.info(
-            f"Auto-finalised VC={self._current_vc} verdict={verdict} "
-            f"ok={ok_items} ng={ng_items}"
-        )
+            stats = self._db.get_session_stats(self._session_id)
+            self.stats_bar.on_stats(stats)
+            self.stats_bar.on_verdict(verdict)
+
+            logger.info(
+                f"Auto-finalised VC={vc} verdict={verdict} "
+                f"ok={ok_items} ng={ng_items}"
+            )
+        except Exception as e:
+            logger.error(f"Auto-finalise failed: {e}")
+            self.stats_bar.on_verdict("ERR")
 
         self._current_vin     = ""
         self._current_vc      = ""
@@ -1021,34 +1038,58 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str)
     def _on_serial_vin(self, vin: str):
         """Called when a VIN is received from the serial reader."""
-        self._vin_input.setText(vin)
-        self._vc_input.clear()
-        self._vc_input.setEnabled(False)
-        self._vc_input.setPlaceholderText("Looking up VC…")
-        self._show_toast(f"VIN received: {vin} — looking up VC…", 5000)
-        self._pending_vin = vin
-        worker = VCLookupWorker(vin)
-        worker.result_ready.connect(self._on_vc_lookup_result)
-        worker.error.connect(self._on_vc_lookup_error)
-        worker.finished.connect(worker.deleteLater)
-        worker.start()
+        try:
+            # Limit concurrent lookups to prevent resource exhaustion
+            if len(self._vc_lookup_workers) >= 5:
+                logger.warning("Too many pending VC lookups — dropping VIN")
+                self._show_toast("Too many VINs — dropping", 2000)
+                return
+
+            self._vin_input.setText(vin)
+            self._vc_input.clear()
+            self._vc_input.setEnabled(False)
+            self._vc_input.setPlaceholderText("Looking up VC…")
+            self._show_toast(f"VIN received: {vin} — looking up VC…", 5000)
+            self._pending_vin = vin
+            worker = VCLookupWorker(vin)
+            worker.result_ready.connect(self._on_vc_lookup_result)
+            worker.error.connect(self._on_vc_lookup_error)
+            worker.finished.connect(self._on_vc_lookup_finished)
+            worker.start()
+            self._vc_lookup_workers.add(worker)
+        except Exception as e:
+            logger.error(f"Failed to process serial VIN: {e}")
+            self._vc_input.setEnabled(True)
 
     @pyqtSlot(str, str)
     def _on_vc_lookup_result(self, vin: str, vc: str):
-        if getattr(self, '_pending_vin', None) != vin:
-            return
-        self._pending_vin = None
-        self._vc_input.setText(vc)
-        self._vc_input.setEnabled(True)
-        self._show_toast(f"VC found: {vc}", 2500)
-        self._submit_scan()
+        try:
+            if getattr(self, '_pending_vin', None) != vin:
+                return
+            self._pending_vin = None
+            self._vc_input.setText(vc)
+            self._vc_input.setEnabled(True)
+            self._show_toast(f"VC found: {vc}", 2500)
+            self._submit_scan()
+        except Exception as e:
+            logger.error(f"VC lookup result handler error: {e}")
 
     @pyqtSlot(str)
     def _on_vc_lookup_error(self, msg: str):
-        self._pending_vin = None
-        self._vc_input.setEnabled(True)
-        self._vc_input.setPlaceholderText("12-digit VC…")
-        self._show_toast(f"VC lookup failed: {msg}", 5000)
+        try:
+            self._pending_vin = None
+            self._vc_input.setEnabled(True)
+            self._vc_input.setPlaceholderText("12-digit VC…")
+            self._show_toast(f"VC lookup failed: {msg}", 5000)
+        except Exception as e:
+            logger.error(f"VC lookup error handler error: {e}")
+
+    @pyqtSlot()
+    def _on_vc_lookup_finished(self):
+        worker = self.sender()
+        if worker is not None:
+            worker.deleteLater()
+            self._vc_lookup_workers.discard(worker)
 
     @pyqtSlot(str, str)
     def _on_item_changed(self, item_id: str, status: str):
@@ -1074,14 +1115,22 @@ class MainWindow(QMainWindow):
                 )
             self.statusBar().showMessage(
                 "Frame in view — scanning…" if present
-                else f"VC {self._current_vc} — waiting for frame in camera view"
+                else "Waiting for frame in camera view"
             )
 
-    @pyqtSlot(int)
-    def _on_checkpoint_hit(self, cp_id: int):
+    @pyqtSlot(int, int)
+    def _on_checkpoint_hit(self, cam_id: int, cp_id: int):
         if self._state != STATE_INSPECT or not self._frame_in_view:
             return
-        item_id = f"CL-{cp_id:02d}"
+
+        # Only accept hits from the checkpoint's assigned camera
+        cp = CHECKPOINT_MAP.get(cp_id)
+        if cp is None:
+            return
+        if cp.camera != 0 and cp.camera != cam_id:
+            return
+
+        item_id = cp.code
 
         # Look up the item name from the current model
         item_name = item_id
@@ -1100,9 +1149,6 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(object)
     def _on_det_result(self, result):
-        if result.annotated_frame is not None:
-            w1 = self._cam_w1 if result.cam_id == 1 else self._cam_w2
-            w1.update_frame(result.annotated_frame)
         self.statusBar().showMessage(
             f"CAM{result.cam_id} | {result.inference_ms:.0f}ms | "
             f"frame={'YES' if result.frame_present else 'NO'} | "
@@ -1131,13 +1177,19 @@ class MainWindow(QMainWindow):
 
     def _launch_camera(self, cam_id: int):
         cfg = self._cfg.camera1 if cam_id == 1 else self._cfg.camera2
-        if cam_id == 2 and not cfg.enabled:
+        if not cfg.enabled:
             return
 
-        if self._demo_mode or not cfg.enabled or not cfg.rtsp_url.strip():
+        if self._demo_mode == "simulation":
             worker = DemoFrameWorker(cam_id)
-        else:
-            worker = CameraWorker(cam_id, cfg)
+        elif self._demo_mode == "recorded":
+            path = cfg.video_path or f"assets/camera{cam_id}.mp4"
+            worker = VideoFileWorker(cam_id, path, cfg)
+        else:  # "off" — use RTSP
+            if cfg.rtsp_url.strip():
+                worker = CameraWorker(cam_id, cfg)
+            else:
+                worker = DemoFrameWorker(cam_id)
 
         worker.frame_ready.connect(self._on_frame)
         worker.status_change.connect(self._on_cam_status)
@@ -1147,6 +1199,9 @@ class MainWindow(QMainWindow):
     @pyqtSlot(int, np.ndarray)
     def _on_frame(self, cam_id: int, frame: np.ndarray):
         self._last_frames[cam_id] = frame
+        # Show raw frame on camera (no detection overlays)
+        w = self._cam_w1 if cam_id == 1 else self._cam_w2
+        w.update_frame(frame)
         self._det_worker.enqueue(cam_id, frame)
 
     @pyqtSlot(int, str, bool)
@@ -1217,28 +1272,30 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _demo_auto_detect(self):
-        """In demo mode, progressively mark checkpoints as detected."""
-        if not self._demo_mode or self._state != STATE_INSPECT:
+        """In demo mode, detect one checkpoint at a time to look authentic."""
+        if self._demo_mode == "off" or self._state != STATE_INSPECT:
             self._demo_detect_timer.stop()
             return
         if not self._current_model or not self._current_model.checklist:
             return
-        items = self._current_model.checklist
-        if self._demo_checkpoint_idx < len(items):
-            item = items[self._demo_checkpoint_idx]
-            self._on_checkpoint_hit(int(item.id.split("-")[1]))
-            self._demo_checkpoint_idx += 1
-        else:
+        items = [it for it in self._current_model.checklist
+                 if self._chassis_photo.get_statuses().get(it.id) != "OK"]
+        if not items:
             self._demo_detect_timer.stop()
-            self._show_toast("✔ All checkpoints detected in demo!", 2000)
+            self._demo_cycle_count += 1
+            self._show_toast(f"✔ Cycle {self._demo_cycle_count} complete — all checkpoints detected!", 2000)
+            # Start next cycle after a short pause
+            self._demo_detect_timer.start(1500)
+            return
 
-    @pyqtSlot()
-    def _toggle_demo(self):
-        self._demo_mode = not self._demo_mode
-        self._demo_btn.setText(
-            f"DEMO MODE: {'ON' if self._demo_mode else 'OFF'}"
-        )
-        self._start_cameras()
+        # Detect one checkpoint per tick with realistic delay
+        item = items[0]
+        cam = self._cfg.checkpoints.get(item.id, {}).get("camera", 1)
+        self._on_checkpoint_hit(cam, int(item.id.split("-")[1]))
+        remaining = len(items) - 1
+        # Faster when many remain, slower near the end
+        delay = random.randint(400, 700) if remaining > 3 else random.randint(600, 1200)
+        self._demo_detect_timer.start(delay)
 
     def _save_ng_frames(self, vc: str):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1247,6 +1304,17 @@ class MainWindow(QMainWindow):
             path = os.path.join(NG_DIR, f"NG_{safe_vc}_cam{cam_id}_{ts}.jpg")
             cv2.imwrite(path, frame)
             logger.info(f"NG frame saved: {path}")
+
+    def _on_exit_clicked(self):
+        """Prompt and close the application safely."""
+        from PyQt5.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self, "Confirm Exit",
+            "Are you sure you want to close the application?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.close()
 
     def closeEvent(self, event):
         self._finalise_timer.stop()
@@ -1264,6 +1332,11 @@ class MainWindow(QMainWindow):
 
         self._det_worker.stop()
         self._serial_reader.stop()
+        for w in list(self._vc_lookup_workers):
+            if w.isRunning():
+                w.wait(3000)
+            w.deleteLater()
+        self._vc_lookup_workers.clear()
 
         ConfigManager.instance().save()
         self._db.close()

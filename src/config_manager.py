@@ -25,6 +25,8 @@ class CameraConfig:
     reconnect_delay: int = 3
     digital_zoom: float = 1.0
     buffer_size: int = 1
+    video_path: str = ""    # local video file (overrides rtsp_url)
+    model_path: str = ""    # per-camera .pt override
 
 
 @dataclass
@@ -72,14 +74,14 @@ class DatabaseConfig:
 
 
 _DEFAULT_CHECKPOINTS: Dict[str, dict] = {
-    "CL-01": {"name": "Resilience bkt.",               "x": 0.4451, "y": 0.2408, "w": 0.06, "h": 0.06},
-    "CL-04": {"name": "B/S Bumper support bkt.",       "x": 0.1321, "y": 0.2428, "w": 0.06, "h": 0.06},
-    "CL-05": {"name": "Bumper support bkt",            "x": 0.1122, "y": 0.8487, "w": 0.06, "h": 0.06},
-    "CL-08": {"name": "B/S Trunnion bkt mtg on frame", "x": 0.7770, "y": 0.8049, "w": 0.06, "h": 0.08},
-    "CL-12": {"name": "B/S Eng Mtg Bkt",               "x": 0.3148, "y": 0.8390, "w": 0.06, "h": 0.06},
-    "CL-15": {"name": "APU Fitment with bkt",          "x": 0.5198, "y": 0.8364, "w": 0.06, "h": 0.06},
-    "CL-18": {"name": "B/S ARB Rear mtg BKT",          "x": 0.9390, "y": 0.8099, "w": 0.06, "h": 0.08},
-    "CL-19": {"name": "Articulation Stopper",          "x": 0.8109, "y": 0.2598, "w": 0.06, "h": 0.06},
+    "CL-01": {"name": "Resilience bkt.",               "x": 0.4451, "y": 0.2408, "w": 0.06, "h": 0.06, "camera": 1},
+    "CL-02": {"name": "B/S Bumper support bkt.",       "x": 0.1321, "y": 0.2428, "w": 0.06, "h": 0.06, "camera": 1},
+    "CL-03": {"name": "Bumper support bkt",            "x": 0.1122, "y": 0.8487, "w": 0.06, "h": 0.06, "camera": 1},
+    "CL-04": {"name": "B/S Trunnion bkt mtg on frame", "x": 0.7770, "y": 0.8049, "w": 0.06, "h": 0.08, "camera": 2},
+    "CL-05": {"name": "B/S Eng Mtg Bkt",               "x": 0.3148, "y": 0.8390, "w": 0.06, "h": 0.06, "camera": 2},
+    "CL-06": {"name": "APU Fitment with bkt",          "x": 0.5198, "y": 0.8364, "w": 0.06, "h": 0.06, "camera": 2},
+    "CL-07": {"name": "B/S ARB Rear mtg BKT",          "x": 0.9390, "y": 0.8099, "w": 0.06, "h": 0.08, "camera": 2},
+    "CL-08": {"name": "Articulation Stopper",          "x": 0.8109, "y": 0.2598, "w": 0.06, "h": 0.06, "camera": 2},
 }
 
 
@@ -88,12 +90,14 @@ class AppConfig:
     camera1: CameraConfig = field(default_factory=lambda: CameraConfig(
         enabled=True,
         label="Left View",
-        rtsp_url="rtsp://admin:admin123@192.168.1.64/Streaming/Channels/101"
+        rtsp_url="rtsp://admin:admin123@192.168.1.64/Streaming/Channels/101",
+        video_path="assets/left_view.mp4",
     ))
     camera2: CameraConfig = field(default_factory=lambda: CameraConfig(
         enabled=True,
         label="Right View",
-        rtsp_url="rtsp://admin:admin123@192.168.1.65/Streaming/Channels/101"
+        rtsp_url="rtsp://admin:admin123@192.168.1.65/Streaming/Channels/101",
+        video_path="assets/right_view.mp4",
     ))
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     alert: AlertConfig = field(default_factory=AlertConfig)
@@ -105,6 +109,7 @@ class AppConfig:
     station_id: str = "01_VIN_Scan"
     reference_image: str = "new_qa.png"
     checkpoints: Dict[str, dict] = field(default_factory=lambda: dict(_DEFAULT_CHECKPOINTS))
+    demo_mode: str = "off"  # "off", "recorded", "simulation"
 
 
 class ConfigManager:
@@ -160,12 +165,33 @@ class ConfigManager:
             "station_id": self._cfg.station_id,
             "reference_image": self._cfg.reference_image,
             "checkpoints": self._cfg.checkpoints,
+            "demo_mode": self._cfg.demo_mode,
         }
+
+    @staticmethod
+    def _coerce(value, target_type):
+        """Coerce value to match the expected dataclass field type."""
+        if target_type is bool and isinstance(value, str):
+            return value.lower() in ("true", "1", "yes")
+        if target_type in (int, float) and isinstance(value, str):
+            try:
+                return target_type(value)
+            except (ValueError, TypeError):
+                return value
+        return value
 
     def _apply_dict(self, data: dict):
         def _update(obj, d):
+            hints = {}
+            try:
+                from dataclasses import fields
+                hints = {f.name: f.type for f in fields(obj)}
+            except Exception:
+                pass
             for k, v in d.items():
                 if hasattr(obj, k):
+                    if k in hints and not isinstance(v, hints[k]) and v is not None:
+                        v = self._coerce(v, hints[k])
                     setattr(obj, k, v)
 
         if "camera1" in data:
@@ -181,6 +207,6 @@ class ConfigManager:
         if "database" in data:
             _update(self._cfg.database, data["database"])
         for k in ("theme", "conveyor_direction", "line_id", "station_id",
-                  "reference_image", "checkpoints"):
+                  "reference_image", "checkpoints", "demo_mode"):
             if k in data:
                 setattr(self._cfg, k, data[k])

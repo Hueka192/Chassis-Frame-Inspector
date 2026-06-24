@@ -30,8 +30,9 @@ logger = get_logger("detector")
 # How many consecutive positive frames before a checkpoint is CONFIRMED
 N_CONFIRM = 4
 
-# Minimum green-frame pixel area (px²) to consider a frame present in FOV
-FRAME_PRESENT_MIN_AREA = 18_000   # ~3% of 720p frame
+# Minimum green-frame coverage ratio to consider a frame present in FOV
+# Scaled dynamically based on frame resolution (2% of total pixels)
+FRAME_PRESENT_MIN_RATIO = 0.02
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -79,14 +80,14 @@ COLOUR_SIGNATURES = {
 }
 
 COLOUR_CP_MAP: Dict[str, List[int]] = {
-    "green_frame":    [1, 2, 3, 4, 5, 6, 10, 11],
-    "grey_bracket":   [4, 5, 7, 8],
-    "orange_bracket": [2, 6, 10],
-    "blue_bracket":   [1, 4, 11],
+    "green_frame":    [1, 2, 3, 4, 5, 6, 7, 8],
+    "grey_bracket":   [4, 5, 7],
+    "orange_bracket": [2, 6],
+    "blue_bracket":   [1, 4],
     "purple_bracket": [5, 3],
-    "yellow_label":   [10, 11],
-    "silver_valve":   [7, 8],
-    "black_pipe":     [8, 9],
+    "yellow_label":   [],
+    "silver_valve":   [7],
+    "black_pipe":     [8],
 }
 
 COLOUR_DRAW = {
@@ -142,13 +143,14 @@ class RuleBasedDetector:
         total_px   = frame.shape[0] * frame.shape[1]
         green_px   = int(np.sum(mask > 0))
         ratio      = green_px / max(total_px, 1)
+        min_area   = int(total_px * FRAME_PRESENT_MIN_RATIO)
 
         # Also require at least one wide horizontal contour
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         wide_found = False
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area < FRAME_PRESENT_MIN_AREA:
+            if area < min_area:
                 continue
             _, _, rw, rh = cv2.boundingRect(cnt)
             aspect = rw / max(rh, 1)
@@ -156,7 +158,7 @@ class RuleBasedDetector:
                 wide_found = True
                 break
 
-        present = wide_found and green_px > FRAME_PRESENT_MIN_AREA
+        present = wide_found and green_px > min_area
         return present, ratio
 
     # ── Main detect ───────────────────────────────────────────────────────
@@ -233,7 +235,7 @@ class RuleBasedDetector:
                         raw_hits[cp_id] = max(raw_hits.get(cp_id, 0.0), conf)
 
         # Step 3: Temporal smoothing — update hit buffers
-        confirmed_this_call: List[int] = list(self._confirmed)  # already locked
+        confirmed_this_call: List[int] = []
 
         for cp_id in list(self._hit_buf.keys()):
             if cp_id in self._confirmed:
@@ -249,7 +251,7 @@ class RuleBasedDetector:
                 confirmed_this_call.append(cp_id)
 
         result.boxes = _nms(all_boxes)
-        result.matched_checkpoints = sorted(set(confirmed_this_call))
+        result.matched_checkpoints = sorted(confirmed_this_call)
         result.annotated_frame = _annotate(frame.copy(), result.boxes, present)
         result.inference_ms = (time.perf_counter() - t0) * 1000
         return result
@@ -266,7 +268,9 @@ class YOLODetector:
         try:
             from ultralytics import YOLO
             self._model = YOLO(model_path)
-            logger.info(f"YOLO loaded: {model_path}")
+            if not cfg.use_gpu:
+                self._model.to("cpu")
+            logger.info(f"YOLO loaded: {model_path} (gpu={cfg.use_gpu})")
         except Exception as e:
             logger.warning(f"YOLO failed ({e}) — using rule-based")
 
@@ -317,9 +321,10 @@ class YOLODetector:
 class DetectionWorker(QThread):
     """
     Background thread — receives frames via enqueue(), emits results.
+    Supports per-camera YOLO models via CameraConfig.model_path.
     """
     result_ready   = pyqtSignal(object)    # DetectionResult
-    checkpoint_hit = pyqtSignal(int)       # cp_id confirmed
+    checkpoint_hit = pyqtSignal(int, int)  # (cam_id, cp_id)
     frame_presence = pyqtSignal(bool)      # True = frame in view
 
     def __init__(self, parent=None):
@@ -328,23 +333,27 @@ class DetectionWorker(QThread):
         self._mutex = QMutex()
         self._stop  = False
         self._skip_ctr: Dict[int, int] = {}
-        self._detector = None
+        self._detectors: Dict[int, object] = {}
         self._last_presence = None
         self._paused = False
-        self._init_detector()
 
-    def _init_detector(self):
-        cfg = ConfigManager.instance().cfg
-        mp  = cfg.detection.model_path
-        if mp and os.path.exists(mp):
-            self._detector = YOLODetector(mp, cfg.detection)
-        else:
-            self._detector = RuleBasedDetector(cfg.detection)
+    def _get_detector(self, cam_id: int):
+        """Return detector for a given camera — lazy per-camera init."""
+        if cam_id not in self._detectors:
+            cfg = ConfigManager.instance().cfg
+            global_mp = cfg.detection.model_path
+            cam_cfg = cfg.camera1 if cam_id == 1 else cfg.camera2
+            mp = cam_cfg.model_path or global_mp
+            if mp and os.path.exists(mp):
+                self._detectors[cam_id] = YOLODetector(mp, cfg.detection)
+            else:
+                self._detectors[cam_id] = RuleBasedDetector(cfg.detection)
+        return self._detectors[cam_id]
 
     def reset_detector(self):
         """Call when new inspection frame starts — clears temporal buffers."""
-        if self._detector:
-            self._detector.reset()
+        for d in self._detectors.values():
+            d.reset()
 
     def enqueue(self, cam_id: int, frame: np.ndarray):
         skip = ConfigManager.instance().cfg.detection.frame_skip
@@ -362,7 +371,11 @@ class DetectionWorker(QThread):
         self.wait(1000)
 
     def reload_detector(self):
-        self._init_detector()
+        self._detectors.clear()
+
+    def reset_presence(self):
+        """Force frame_presence signal on next frame regardless of previous state."""
+        self._last_presence = None
 
     def pause_detection(self, paused: bool):
         """Pause/resume emitting checkpoint hits (keep frame presence detection)."""
@@ -384,7 +397,7 @@ class DetectionWorker(QThread):
                 continue
             cam_id, frame = item
             try:
-                result = self._detector.detect(frame, cam_id)
+                result = self._get_detector(cam_id).detect(frame, cam_id)
                 self.result_ready.emit(result)
 
                 # Emit frame presence only on change
@@ -395,7 +408,7 @@ class DetectionWorker(QThread):
                 # Emit confirmed checkpoints (only when not paused)
                 if not self._paused:
                     for cp_id in result.matched_checkpoints:
-                        self.checkpoint_hit.emit(cp_id)
+                        self.checkpoint_hit.emit(cam_id, cp_id)
 
             except Exception as e:
                 logger.error(f"Detection error: {e}")
